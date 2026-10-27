@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'chat_detail_screen.dart';
 import 'new_conversation_dialog.dart';
+import 'services/nobox_api_service.dart';
 
 /// Model untuk item percakapan NoBox Chat
 class ChatConversation {
@@ -32,9 +35,9 @@ class ChatConversation {
   });
 }
 
-/// Halaman NoBox Chat dengan desain Anti-AI Slop:
+/// Halaman NoBox Chat dengan sinkronisasi dua arah ke nobox.ai:
 /// Modern, minimalis, kontras tinggi, hierarki tipografi tegas,
-/// dan transisi interaktif yang mulus.
+/// auto-sync percakapan, dan pengiriman pesan langsung ke backend nobox.ai.
 class ChatInboxScreen extends StatefulWidget {
   final VoidCallback? onBackToLoading;
   final List<ChatConversation> initialConversations;
@@ -50,17 +53,58 @@ class ChatInboxScreen extends StatefulWidget {
 }
 
 class _ChatInboxScreenState extends State<ChatInboxScreen> {
+  final NoboxApiService _apiService = NoboxApiService();
+
   int _selectedTabIndex = 0;
   final List<String> _tabs = const ['All', 'Unassigned', 'Assigned', 'Resolved'];
   String _searchQuery = '';
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
 
-  late final List<ChatConversation> _conversations =
+  late List<ChatConversation> _conversations =
       List<ChatConversation>.from(widget.initialConversations);
+
+  Timer? _syncTimer;
+  bool _isSyncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAndSync();
+
+    // Auto-sync berkala setiap 8 detik jika terhubung ke server nobox.ai
+    _syncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (mounted && _apiService.isLoggedIn && !_isSyncing) {
+        _syncFromNoboxAi();
+      }
+    });
+  }
+
+  Future<void> _initAndSync() async {
+    await _apiService.init();
+    if (mounted && _apiService.isLoggedIn) {
+      await _syncFromNoboxAi();
+    }
+  }
+
+  Future<void> _syncFromNoboxAi() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+
+    final remoteChats = await _apiService.getConversations();
+    if (mounted) {
+      setState(() {
+        if (remoteChats.isNotEmpty) {
+          _conversations = remoteChats;
+        }
+        _isSyncing = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -111,7 +155,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: _isSearchOpen
-                  ? _buildSearchBar(brandPrimary)
+                  ? _buildSearchBar()
                   : _buildNormalAppBar(brandAccent),
             ),
           ),
@@ -208,26 +252,34 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             ),
           ),
 
-          // 2. Chat Conversation List
+          // 2. Chat Conversation List dengan Pull-to-Refresh
           Expanded(
-            child: _filteredConversations.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _filteredConversations.length,
-                    separatorBuilder: (_, _) => Divider(
-                      height: 1,
-                      thickness: 0.6,
-                      indent: 78,
-                      endIndent: 16,
-                      color: Colors.white.withValues(alpha: 0.05),
+            child: RefreshIndicator(
+              onRefresh: _syncFromNoboxAi,
+              color: brandAccent,
+              backgroundColor: const Color(0xFF161F33),
+              child: _filteredConversations.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _filteredConversations.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        thickness: 0.6,
+                        indent: 78,
+                        endIndent: 16,
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
+                      itemBuilder: (context, index) {
+                        final ChatConversation chat =
+                            _filteredConversations[index];
+                        return _buildChatRow(chat, surfaceCard, brandPrimary);
+                      },
                     ),
-                    itemBuilder: (context, index) {
-                      final ChatConversation chat = _filteredConversations[index];
-                      return _buildChatRow(chat, surfaceCard, brandPrimary);
-                    },
-                  ),
+            ),
           ),
         ],
       ),
@@ -281,7 +333,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         ),
         const SizedBox(width: 12),
 
-        // Title and Status
+        // Title and Live Sync Status
         Expanded(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -311,32 +363,58 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                 ],
               ),
               const SizedBox(height: 2),
-              Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF10B981),
-                      shape: BoxShape.circle,
+              InkWell(
+                onTap: _showNoboxAiConnectDialog,
+                borderRadius: BorderRadius.circular(4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: _apiService.isLoggedIn
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Aktif • 2 Akun Terhubung',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.5),
+                    const SizedBox(width: 5),
+                    Text(
+                      _apiService.isLoggedIn
+                          ? 'nobox.ai aktif (${_conversations.length} chat)'
+                          : 'Hubungkan nobox.ai',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 3),
+                    Icon(
+                      Icons.arrow_drop_down_rounded,
+                      size: 14,
+                      color: Colors.white.withValues(alpha: 0.4),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
 
         // Action Icons
+        if (_isSyncing)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: brandAccent,
+              ),
+            ),
+          ),
         IconButton(
           tooltip: 'Cari percakapan',
           icon: const Icon(Icons.search_rounded, color: Colors.white70, size: 22),
@@ -363,7 +441,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     );
   }
 
-  Widget _buildSearchBar(Color brandPrimary) {
+  Widget _buildSearchBar() {
     return Row(
       children: [
         IconButton(
@@ -417,7 +495,34 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   ) {
     return InkWell(
       onTap: () {
-        _showChatDetail(context, chat);
+        // Navigasi langsung ke ruang chat dua arah dengan nobox.ai
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChatDetailScreen(
+              chat: chat,
+              onMessageSent: (sentText) {
+                setState(() {
+                  final idx =
+                      _conversations.indexWhere((c) => c.id == chat.id);
+                  if (idx != -1) {
+                    final old = _conversations[idx];
+                    _conversations[idx] = ChatConversation(
+                      id: old.id,
+                      name: old.name,
+                      subtitle: old.subtitle,
+                      lastMessage: sentText,
+                      time: 'Baru saja',
+                      channel: old.channel,
+                      assignedTo: old.assignedTo,
+                      status: old.status,
+                      isGroup: old.isGroup,
+                    );
+                  }
+                });
+              },
+            ),
+          ),
+        );
       },
       splashColor: brandPrimary.withValues(alpha: 0.08),
       highlightColor: brandPrimary.withValues(alpha: 0.04),
@@ -600,7 +705,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                     size: 24,
                   )
                 : Text(
-                    chat.name.substring(0, 1).toUpperCase(),
+                    chat.name.isNotEmpty
+                        ? chat.name.substring(0, 1).toUpperCase()
+                        : '?',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -689,6 +796,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
 
     return Center(
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -729,7 +837,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             Text(
               isSearchActive
                   ? 'Coba gunakan kata kunci pencarian yang berbeda'
-                  : 'Pesan dari saluran Telegram & WhatsApp yang terhubung akan muncul di sini secara otomatis.',
+                  : 'Pesan dari saluran Telegram & WhatsApp yang terhubung ke nobox.ai akan muncul di sini secara otomatis.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12.5,
@@ -737,6 +845,20 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                 color: Colors.white.withValues(alpha: 0.45),
               ),
             ),
+            const SizedBox(height: 20),
+            if (!_apiService.isLoggedIn)
+              OutlinedButton.icon(
+                onPressed: _showNoboxAiConnectDialog,
+                icon: const Icon(Icons.sync_rounded, size: 16),
+                label: const Text('Hubungkan Akun nobox.ai'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0066FF),
+                  side: const BorderSide(color: Color(0xFF0066FF)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -799,98 +921,122 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     );
   }
 
-  void _showChatDetail(BuildContext context, ChatConversation chat) {
-    showModalBottomSheet<void>(
+  void _showNoboxAiConnectDialog() {
+    final userController =
+        TextEditingController(text: _apiService.currentUsername ?? '');
+    final passController = TextEditingController();
+    bool isConnecting = false;
+
+    showDialog<void>(
       context: context,
-      backgroundColor: const Color(0xFF0F1523),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF111726),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              title: const Row(
                 children: [
-                  _buildAvatar(chat),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          chat.name,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        if (chat.subtitle != null)
-                          Text(
-                            chat.subtitle!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
-                          ),
-                      ],
-                    ),
+                  Icon(Icons.cloud_sync_rounded, color: Color(0xFF0066FF)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Koneksi nobox.ai',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Pesan Terakhir:',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.white.withValues(alpha: 0.4),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _apiService.isLoggedIn
+                        ? 'Akun aktif: ${_apiService.currentUsername}\nServer: id.nobox.ai'
+                        : 'Masukkan kredensial akun nobox.ai untuk sinkronisasi otomatis.',
+                    style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.6)),
+                  ),
+                  const SizedBox(height: 16),
+                  if (!_apiService.isLoggedIn) ...[
+                    TextField(
+                      controller: userController,
+                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        labelText: 'Username / Email',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        filled: true,
+                        fillColor: const Color(0xFF161F33),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      chat.lastMessage,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white,
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passController,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        filled: true,
+                        fillColor: const Color(0xFF161F33),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.reply_rounded),
-                      label: const Text('Buka Ruang Obrolan'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0066FF),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
-            ],
-          ),
+              actions: [
+                if (_apiService.isLoggedIn)
+                  TextButton(
+                    onPressed: () async {
+                      await _apiService.logout();
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                      }
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    },
+                    child: const Text('Putuskan Sesi', style: TextStyle(color: Color(0xFFF87171))),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Tutup', style: TextStyle(color: Colors.white60)),
+                ),
+                if (!_apiService.isLoggedIn)
+                  FilledButton(
+                    onPressed: isConnecting
+                        ? null
+                        : () async {
+                            final u = userController.text.trim();
+                            final p = passController.text.trim();
+                            if (u.isEmpty || p.isEmpty) return;
+
+                            setDialogState(() => isConnecting = true);
+                            final ok = await _apiService.login(u, p);
+                            setDialogState(() => isConnecting = false);
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                            if (ok && mounted) {
+                              await _syncFromNoboxAi();
+                            }
+                          },
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0066FF)),
+                    child: isConnecting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Hubungkan'),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
