@@ -111,7 +111,7 @@ class _LoadingScreenState extends State<LoadingScreen>
             widget.onComplete!();
           } else if (widget.destination != null) {
             Navigator.of(context).pushReplacement(
-              PageRouteBuilder(
+              PageRouteBuilder<void>(
                 transitionDuration: const Duration(milliseconds: 600),
                 pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
                   opacity: animation,
@@ -509,7 +509,6 @@ class _LoadingScreenState extends State<LoadingScreen>
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           'Loading',

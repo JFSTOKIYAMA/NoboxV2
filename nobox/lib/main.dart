@@ -52,7 +52,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _openLoadingScreen() {
     Navigator.of(context).push(
-      PageRouteBuilder(
+      PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 500),
         pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
           opacity: animation,
