@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'new_conversation_dialog.dart';
 
 /// Model untuk item percakapan NoBox Chat
 class ChatConversation {
@@ -233,18 +234,16 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
 
       // 3. Floating Action Button (New Chat)
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showNewChatModal(context);
-        },
+        onPressed: _showNewChatModal,
         backgroundColor: brandPrimary,
         elevation: 6,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
         child: const Icon(
-          Icons.chat_bubble_outline_rounded,
+          Icons.add_rounded,
           color: Colors.white,
-          size: 24,
+          size: 28,
         ),
       ),
     );
@@ -897,16 +896,27 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     );
   }
 
-  void _showNewChatModal(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Fitur Mulai Percakapan Baru'),
-        backgroundColor: const Color(0xFF0066FF),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+  Future<void> _showNewChatModal() async {
+    final ChatConversation? created = await showDialog<ChatConversation>(
+      context: context,
+      builder: (ctx) => NewConversationDialog(
+        onCreated: (newChat) {
+          setState(() {
+            _conversations.insert(0, newChat);
+          });
+        },
       ),
     );
+
+    if (created != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Percakapan dengan ${created.name} berhasil dibuat'),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
   }
 }
