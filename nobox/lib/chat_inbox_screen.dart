@@ -36,8 +36,13 @@ class ChatConversation {
 /// dan transisi interaktif yang mulus.
 class ChatInboxScreen extends StatefulWidget {
   final VoidCallback? onBackToLoading;
+  final List<ChatConversation> initialConversations;
 
-  const ChatInboxScreen({super.key, this.onBackToLoading});
+  const ChatInboxScreen({
+    super.key,
+    this.onBackToLoading,
+    this.initialConversations = const [],
+  });
 
   @override
   State<ChatInboxScreen> createState() => _ChatInboxScreenState();
@@ -50,130 +55,8 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
 
-  final List<ChatConversation> _conversations = const [
-    ChatConversation(
-      id: '1',
-      name: 'MENUJU SUKSES',
-      subtitle: 'Komunitas Edukasi',
-      lastMessage: '11:16',
-      time: '27 Okt, 11:16',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      unreadCount: 14,
-      status: 'Assigned',
-      isGroup: true,
-    ),
-    ChatConversation(
-      id: '2',
-      name: 'TORNADO 🌪️',
-      subtitle: 'Grup Pengembang',
-      lastMessage: 'Sticker terkirim',
-      time: '27 Okt, 11:16',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      unreadCount: 12,
-      status: 'Assigned',
-      isGroup: true,
-      isSpecialMessage: true,
-    ),
-    ChatConversation(
-      id: '3',
-      name: 'Ordi / Jordy',
-      subtitle: 'SMKN 11 Malang',
-      lastMessage: 'Unsupported Message Format',
-      time: '27 Okt, 11:16',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      unreadCount: 2,
-      status: 'Assigned',
-      isSpecialMessage: true,
-    ),
-    ChatConversation(
-      id: '4',
-      name: 'Juhri',
-      subtitle: 'SMKN 1 PASURUAN',
-      lastMessage: 'heluk mas, bagaimana progresnya?',
-      time: '27 Okt, 11:04',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      status: 'Assigned',
-    ),
-    ChatConversation(
-      id: '5',
-      name: "I'zas",
-      subtitle: 'SMKN 1 Pasuruan',
-      lastMessage: 'Sticker terkirim',
-      time: '27 Okt, 10:44',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      status: 'Assigned',
-      isSpecialMessage: true,
-    ),
-    ChatConversation(
-      id: '6',
-      name: 'Yasmin',
-      subtitle: 'SMKN 11 Malang',
-      lastMessage: 'kene mumet pak, mohon arahannya',
-      time: '27 Okt, 09:18',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      status: 'Assigned',
-    ),
-    ChatConversation(
-      id: '7',
-      name: 'Mg Mobile Apps',
-      subtitle: 'Internal Sync',
-      lastMessage: 'Presentasi selesai disiapkan',
-      time: '27 Okt, 08:47',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      unreadCount: 10,
-      status: 'Assigned',
-      isGroup: true,
-    ),
-    ChatConversation(
-      id: '8',
-      name: 'Adi Purwanto Ramadhani',
-      subtitle: 'SMKN 1 Pasuruan',
-      lastMessage: 'yawww besok kita lanjut ya',
-      time: '27 Okt, 08:41',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      unreadCount: 1,
-      status: 'Assigned',
-    ),
-    ChatConversation(
-      id: '9',
-      name: 'Harits',
-      subtitle: 'SMKN 1 PASURUAN',
-      lastMessage: 'heluk sudah saya kirim datanya',
-      time: '27 Okt, 08:39',
-      channel: 'Telegram',
-      assignedTo: 'Awas',
-      status: 'Assigned',
-    ),
-    ChatConversation(
-      id: '10',
-      name: 'Budi Santoso',
-      subtitle: 'Client Portal',
-      lastMessage: 'Tolong review akun baru kami',
-      time: '26 Okt, 17:20',
-      channel: 'WhatsApp',
-      assignedTo: 'Fawwas',
-      unreadCount: 3,
-      status: 'Unassigned',
-    ),
-    ChatConversation(
-      id: '11',
-      name: 'Citra Lestari',
-      subtitle: 'Inquiry Produk',
-      lastMessage: 'Terima kasih atas bantuannya!',
-      time: '26 Okt, 14:10',
-      channel: 'WhatsApp',
-      assignedTo: 'Awas',
-      status: 'Resolved',
-    ),
-  ];
+  late final List<ChatConversation> _conversations =
+      List<ChatConversation>.from(widget.initialConversations);
 
   @override
   void dispose() {
@@ -803,33 +686,60 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   }
 
   Widget _buildEmptyState() {
+    final bool isSearchActive = _searchQuery.trim().isNotEmpty;
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.inbox_rounded,
-            size: 56,
-            color: Colors.white.withValues(alpha: 0.2),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Tidak ada percakapan',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.7),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  isSearchActive
+                      ? Icons.search_off_rounded
+                      : Icons.chat_bubble_outline_rounded,
+                  size: 30,
+                  color: Colors.white.withValues(alpha: 0.35),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Ganti filter atau bersihkan pencarian',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.4),
+            const SizedBox(height: 18),
+            Text(
+              isSearchActive
+                  ? 'Percakapan Tidak Ditemukan'
+                  : 'Belum Ada Percakapan',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.85),
+                letterSpacing: 0.2,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              isSearchActive
+                  ? 'Coba gunakan kata kunci pencarian yang berbeda'
+                  : 'Pesan dari saluran Telegram & WhatsApp yang terhubung akan muncul di sini secara otomatis.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.5,
+                color: Colors.white.withValues(alpha: 0.45),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
