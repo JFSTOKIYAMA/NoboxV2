@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chat_inbox_screen.dart';
 import 'loading_screen.dart';
 
 void main() {
@@ -11,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nobox',
+      title: 'NoBox Chat',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -24,9 +25,29 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      // Menjalankan LoadingScreen terlebih dahulu
-      home: const LoadingScreen(
-        destination: MyHomePage(title: 'Nobox Workspace'),
+      // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke ChatInboxScreen
+      home: Builder(
+        builder: (context) => LoadingScreen(
+          destination: ChatInboxScreen(
+            onBackToLoading: () {
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder<void>(
+                  transitionDuration: const Duration(milliseconds: 500),
+                  pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+                    opacity: animation,
+                    child: LoadingScreen(
+                      destination: ChatInboxScreen(
+                        onBackToLoading: () {
+                          // Recursive safe trigger
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -108,6 +129,17 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Ke NoBox Chat',
+            icon: const Icon(Icons.chat_bubble_rounded, color: brandAccent),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ChatInboxScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'Preview Loading Screen',
             icon: const Icon(Icons.refresh_rounded, color: brandAccent),
             onPressed: _openLoadingScreen,
@@ -179,9 +211,15 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
-                      onPressed: _openLoadingScreen,
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Buka Ulang Loading Screen'),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ChatInboxScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.chat_rounded),
+                      label: const Text('Buka NoBox Chat Inbox'),
                       style: FilledButton.styleFrom(
                         backgroundColor: brandPrimary,
                         foregroundColor: Colors.white,
