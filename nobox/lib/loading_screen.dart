@@ -281,42 +281,27 @@ class _LoadingScreenState extends State<LoadingScreen>
                         // Title Brand "NOBOX"
                         FadeTransition(
                           opacity: _fadeAnimation,
-                          child: Column(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'NO',
-                                    style: TextStyle(
-                                      fontFamily: 'sans-serif',
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 4.5,
-                                      color: Colors.white.withValues(alpha: 0.95),
-                                    ),
-                                  ),
-                                  const Text(
-                                    'BOX',
-                                    style: TextStyle(
-                                      fontFamily: 'sans-serif',
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 4.5,
-                                      color: brandAccent,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
                               Text(
-                                'CREATIVE ECOSYSTEM',
+                                'NO',
                                 style: TextStyle(
                                   fontFamily: 'sans-serif',
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 3.2,
-                                  color: Colors.white.withValues(alpha: 0.45),
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 4.5,
+                                  color: Colors.white.withValues(alpha: 0.95),
+                                ),
+                              ),
+                              const Text(
+                                'BOX',
+                                style: TextStyle(
+                                  fontFamily: 'sans-serif',
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 4.5,
+                                  color: brandAccent,
                                 ),
                               ),
                             ],
@@ -480,23 +465,7 @@ class _LoadingScreenState extends State<LoadingScreen>
             ),
           ),
 
-          // Versi badge di pojok bawah
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Text(
-                'v2.0 • Anti-Slop Precision UI',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.25),
-                ),
-              ),
-            ),
-          ),
+
         ],
       ),
     );
