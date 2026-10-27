@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'chat_inbox_screen.dart';
 import 'loading_screen.dart';
+import 'login_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -25,27 +26,27 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke ChatInboxScreen
+      // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke LoginScreen bergaya Anti AI Slop
       home: Builder(
         builder: (context) => LoadingScreen(
-          destination: ChatInboxScreen(
-            onBackToLoading: () {
-              Navigator.of(context).pushReplacement(
-                PageRouteBuilder<void>(
-                  transitionDuration: const Duration(milliseconds: 500),
-                  pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
-                    opacity: animation,
-                    child: LoadingScreen(
-                      destination: ChatInboxScreen(
-                        onBackToLoading: () {
-                          // Recursive safe trigger
-                        },
+          destination: LoginScreen(
+            destination: ChatInboxScreen(
+              onBackToLoading: () {
+                Navigator.of(context).pushReplacement(
+                  PageRouteBuilder<void>(
+                    transitionDuration: const Duration(milliseconds: 500),
+                    pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+                      opacity: animation,
+                      child: const LoadingScreen(
+                        destination: LoginScreen(
+                          destination: ChatInboxScreen(),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -128,6 +129,17 @@ class _MyHomePageState extends State<MyHomePage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Ke Login Screen',
+            icon: const Icon(Icons.login_rounded, color: brandAccent),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LoginScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Ke NoBox Chat',
             icon: const Icon(Icons.chat_bubble_rounded, color: brandAccent),

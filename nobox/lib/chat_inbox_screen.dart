@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'chat_detail_screen.dart';
+import 'login_screen.dart';
 import 'new_conversation_dialog.dart';
 import 'services/nobox_api_service.dart';
 
@@ -995,9 +996,21 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
                       }
-                      if (mounted) {
-                        setState(() {});
-                      }
+                      if (!context.mounted) return;
+                      Navigator.of(context).pushReplacement(
+                        PageRouteBuilder<void>(
+                          transitionDuration: const Duration(milliseconds: 400),
+                          pageBuilder: (_, animation, secondaryAnimation) =>
+                              FadeTransition(
+                            opacity: animation,
+                            child: LoginScreen(
+                              destination: ChatInboxScreen(
+                                onBackToLoading: widget.onBackToLoading,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
                     },
                     child: const Text('Putuskan Sesi', style: TextStyle(color: Color(0xFFF87171))),
                   ),
