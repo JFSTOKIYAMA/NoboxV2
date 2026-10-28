@@ -1039,6 +1039,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                             if (u.isEmpty || p.isEmpty) return;
 
                             setDialogState(() => isConnecting = true);
+
                             final ok = await _apiService.login(u, p);
                             setDialogState(() => isConnecting = false);
 

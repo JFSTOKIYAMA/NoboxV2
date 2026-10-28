@@ -514,26 +514,26 @@ class NoboxApiService {
         'Attachment': '',
       };
 
+      // Format ExtId: nomor HP internasional tanpa + (misal 6282338765517) atau ID Telegram
+      String cleanExt = (extId ?? '').trim().replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanExt.startsWith('08')) {
+        cleanExt = '628${cleanExt.substring(2)}';
+      }
+      if (cleanExt.isEmpty) {
+        cleanExt = cleanRoomId;
+      }
+
+      final int? numericLinkId = int.tryParse(targetRoomId);
+
+      // Wajib menyertakan ExtId dan LinkId di semua room agar lolos validasi "Id Link or Id External"
+      payload['ExtId'] = cleanExt.isNotEmpty ? cleanExt : targetRoomId;
+      payload['LinkId'] = numericLinkId ?? targetRoomId;
+
       if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
         final dynamic effectiveGrpId =
             int.tryParse(groupId ?? '') ?? (groupId ?? cleanRoomId);
         payload['GroupId'] = effectiveGrpId;
         payload['GrpId'] = effectiveGrpId;
-      } else {
-        // Format ExtId: nomor HP internasional tanpa + (misal 6282338765517)
-        String cleanExt = (extId ?? '').trim().replaceAll(RegExp(r'[^0-9]'), '');
-        if (cleanExt.startsWith('08')) {
-          cleanExt = '628${cleanExt.substring(2)}';
-        }
-        if (cleanExt.isEmpty) {
-          cleanExt = cleanRoomId;
-        }
-
-        payload['ExtId'] = cleanExt;
-        final int? numericLinkId = int.tryParse(targetRoomId);
-        if (numericLinkId != null) {
-          payload['LinkId'] = numericLinkId;
-        }
       }
 
       debugPrint(
