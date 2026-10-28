@@ -242,6 +242,27 @@ class NoboxApiService {
         'Take': 50,
         'Skip': 0,
         'Sort': ['Up DESC'],
+        'ColumnSelection': 2,
+        'IncludeColumns': [
+          'Ct',
+          'CtRealNm',
+          'CtIdExt',
+          'CtId',
+          'LastMsg',
+          'SdrMsg',
+          'Up',
+          'In',
+          'St',
+          'ChId',
+          'ChAcc',
+          'ChAccId',
+          'Uc',
+          'GrpId',
+          'Tags',
+          'CtRealId',
+          'UsrNm',
+          '*',
+        ],
       };
 
       if (filterStatus != null && filterStatus != 'All') {
@@ -445,7 +466,24 @@ class NoboxApiService {
       final payload = {
         'Take': 50,
         'Skip': 0,
-        'Sort': ['In ASC'],
+        'Sort': ['In DESC'],
+        'ColumnSelection': 2,
+        'IncludeColumns': [
+          'Id',
+          'RoomId',
+          'Body',
+          'Msg',
+          'SdrMsg',
+          'Sdr',
+          'IsMe',
+          'IsMeLast',
+          'Out',
+          'In',
+          'Up',
+          'SenderName',
+          'Ct',
+          '*',
+        ],
         'EqualityFilter': equalityFilter,
       };
 
@@ -470,7 +508,7 @@ class NoboxApiService {
           }
         }
 
-        return items.map((json) {
+        final List<ChatMessageItem> messages = items.map((json) {
           if (json is! Map) return null;
           final map = Map<String, dynamic>.from(json);
 
@@ -478,8 +516,11 @@ class NoboxApiService {
           final String body = (map['Body'] ?? map['Msg'] ?? '').toString();
           final String sdr =
               (map['SdrMsg'] ?? map['Sdr'] ?? '').toString().toLowerCase();
-          final bool isMe =
-              sdr == 'me' || map['IsMe'] == true || map['IsMeLast'] == true;
+          final bool isMe = sdr == 'me' ||
+              sdr == 'you' ||
+              map['IsMe'] == true ||
+              map['IsMeLast'] == true ||
+              map['Out'] == true;
           final String rawTime = (map['In'] ?? map['Up'] ?? '').toString();
 
           return ChatMessageItem(
@@ -487,9 +528,12 @@ class NoboxApiService {
             content: body,
             isMe: isMe,
             time: _formatTimeOnly(rawTime),
-            senderName: map['SenderName']?.toString(),
+            senderName: map['SenderName']?.toString() ?? map['Ct']?.toString(),
           );
         }).whereType<ChatMessageItem>().toList();
+
+        // Balikkan urutan agar pesan terbaru berada di bawah (kronologis natural obrolan)
+        return messages.reversed.toList();
       }
     } catch (e) {
       debugPrint('NoboxApiService: Error fetching messages: $e');

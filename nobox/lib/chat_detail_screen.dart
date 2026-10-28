@@ -46,8 +46,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _loadMessages();
 
-    // Polling periodik (setiap 3.5 detik) agar pesan baru masuk tanpa bentrok dengan pengiriman
-    _pollingTimer = Timer.periodic(const Duration(milliseconds: 3500), (_) {
+    // Polling periodik (setiap 2 detik) agar pesan baru langsung masuk seketika
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 2000), (_) {
       if (mounted && !_isProcessingQueue) {
         _syncMessagesSilently();
       }
@@ -110,8 +110,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     }
 
-    if (combined.length != _messages.length ||
-        (combined.isNotEmpty && combined.last.id != _messages.last.id)) {
+    bool hasChanged = combined.length != _messages.length;
+    if (!hasChanged) {
+      for (int i = 0; i < combined.length; i++) {
+        if (combined[i].id != _messages[i].id ||
+            combined[i].content != _messages[i].content ||
+            combined[i].isPending != _messages[i].isPending) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (hasChanged) {
       setState(() {
         _messages = combined;
       });
