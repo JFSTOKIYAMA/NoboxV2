@@ -48,5 +48,8 @@ void main() {
     // Verifikasi callback pengiriman terpanggil
     expect(sentMessage, 'Pesan uji coba NoBox AI');
     expect(find.text('Pesan uji coba NoBox AI'), findsOneWidget);
+
+    // Tuntaskan timer pasca pengiriman agar test selesai bersih
+    await tester.pump(const Duration(milliseconds: 1600));
   });
 }

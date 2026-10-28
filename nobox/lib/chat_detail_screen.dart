@@ -19,6 +19,16 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
+class _OutgoingMessageTask {
+  final String tempId;
+  final String content;
+
+  const _OutgoingMessageTask({
+    required this.tempId,
+    required this.content,
+  });
+}
+
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -26,17 +36,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   List<ChatMessageItem> _messages = [];
   bool _isLoading = true;
-  bool _isSending = false;
+  final List<_OutgoingMessageTask> _outgoingQueue = [];
+  bool _isProcessingQueue = false;
   Timer? _pollingTimer;
+  Timer? _postSendSyncTimer;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
 
-    // Polling cepat (setiap 1.5 detik) agar pesan baru langsung masuk tanpa delay
-    _pollingTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
-      if (mounted && !_isSending) {
+    // Polling periodik (setiap 3.5 detik) agar pesan baru masuk tanpa bentrok dengan pengiriman
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 3500), (_) {
+      if (mounted && !_isProcessingQueue) {
         _syncMessagesSilently();
       }
     });
@@ -45,6 +57,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _postSendSyncTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -118,18 +131,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
   }
 
-  Future<void> _handleSendMessage() async {
+  void _handleSendMessage() {
     final text = _textController.text.trim();
-    if (text.isEmpty || _isSending) return;
+    if (text.isEmpty) return;
 
     _textController.clear();
 
-    // 1. Optimistic Update di UI lokal
+    // 1. Optimistic Update langsung di UI lokal agar pengguna langsung melihat pesan
     final now = DateTime.now();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final String tempId =
+        'local_${now.millisecondsSinceEpoch}_${_messages.length}';
     final tempMsg = ChatMessageItem(
-      id: 'local_${now.millisecondsSinceEpoch}',
+      id: tempId,
       content: text,
       isMe: true,
       time: timeStr,
@@ -138,79 +153,96 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     setState(() {
       _messages.add(tempMsg);
-      _isSending = true;
     });
     _scrollToBottom();
     widget.onMessageSent?.call(text);
 
-    // 2. Kirim pesan ke nobox.ai (Inbox/Send)
-    final String safeExt = (widget.chat.extId ?? '').length > 4
-        ? '${widget.chat.extId!.substring(0, 2)}***${widget.chat.extId!.substring(widget.chat.extId!.length - 2)}'
-        : (widget.chat.extId != null && widget.chat.extId!.isNotEmpty ? '***' : '(empty)');
-    debugPrint(
-      'ChatDetail: Pre-send check -> RoomId: ${widget.chat.id}, '
-      'Channel: ${widget.chat.channel}, '
-      'AccountId: ${widget.chat.accountId != null && widget.chat.accountId!.isNotEmpty}, '
-      'ExtId: $safeExt, '
-      'LinkId: ${widget.chat.linkId}, '
-      'IsGroup: ${widget.chat.isGroup}',
-    );
+    // 2. Masukkan ke antrean berurutan sehingga tidak ada pesan yang terlewat
+    _outgoingQueue.add(_OutgoingMessageTask(tempId: tempId, content: text));
+    _processOutgoingQueue();
+  }
 
-    final bool success = await _apiService.sendMessage(
-      roomId: widget.chat.id,
-      content: text,
-      channelId: widget.chat.channel == 'Telegram' ? '2' : '1',
-      accountId: widget.chat.accountId,
-      extId: widget.chat.extId,
-      linkId: widget.chat.linkId,
-      isGroup: widget.chat.isGroup,
-      groupId: widget.chat.groupId,
-    );
+  Future<void> _processOutgoingQueue() async {
+    if (_isProcessingQueue) return;
+    _isProcessingQueue = true;
 
-    if (!mounted) return;
-    setState(() {
-      _isSending = false;
-      // Update status pending menjadi terkirim
-      final idx = _messages.indexOf(tempMsg);
-      if (idx != -1) {
-        _messages[idx] = ChatMessageItem(
-          id: tempMsg.id,
-          content: tempMsg.content,
-          isMe: true,
-          time: tempMsg.time,
-          isPending: !success,
-        );
+    while (_outgoingQueue.isNotEmpty) {
+      final task = _outgoingQueue.removeAt(0);
+
+      final String safeExt = (widget.chat.extId ?? '').length > 4
+          ? '${widget.chat.extId!.substring(0, 2)}***${widget.chat.extId!.substring(widget.chat.extId!.length - 2)}'
+          : (widget.chat.extId != null && widget.chat.extId!.isNotEmpty ? '***' : '(empty)');
+      debugPrint(
+        'ChatDetail: Pre-send check -> RoomId: ${widget.chat.id}, '
+        'Channel: ${widget.chat.channel}, '
+        'AccountId: ${widget.chat.accountId != null && widget.chat.accountId!.isNotEmpty}, '
+        'ExtId: $safeExt, '
+        'LinkId: ${widget.chat.linkId}, '
+        'IsGroup: ${widget.chat.isGroup}',
+      );
+
+      final bool success = await _apiService.sendMessage(
+        roomId: widget.chat.id,
+        content: task.content,
+        channelId: widget.chat.channel == 'Telegram' ? '2' : '1',
+        accountId: widget.chat.accountId,
+        extId: widget.chat.extId,
+        linkId: widget.chat.linkId,
+        isGroup: widget.chat.isGroup,
+        groupId: widget.chat.groupId,
+      );
+
+      if (mounted) {
+        setState(() {
+          final idx = _messages.indexWhere((m) => m.id == task.tempId);
+          if (idx != -1) {
+            _messages[idx] = ChatMessageItem(
+              id: _messages[idx].id,
+              content: _messages[idx].content,
+              isMe: true,
+              time: _messages[idx].time,
+              isPending: !success,
+            );
+          }
+        });
       }
-    });
 
-    if (success && mounted) {
-      // Sinkronisasi tertata setelah pesan terkirim tanpa membebani batas laju request
-      Future<void>.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
+      if (!success && mounted) {
+        final String errText =
+            _apiService.lastError ?? 'Gagal mengirim pesan ke nobox.ai';
+        if (!errText.toLowerCase().contains('too many requests')) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(
+                errText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              backgroundColor: const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+      }
+
+      // Jeda minimal antar pengiriman pesan berturut-turut agar aman dari rate limit server
+      if (_outgoingQueue.isNotEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 1100));
+      }
+    }
+
+    _isProcessingQueue = false;
+
+    if (mounted) {
+      _postSendSyncTimer?.cancel();
+      _postSendSyncTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted && !_isProcessingQueue) {
           _syncMessagesSilently();
         }
       });
-    }
-
-    if (!success && mounted) {
-      final String errText =
-          _apiService.lastError ?? 'Gagal mengirim pesan ke nobox.ai';
-      // Jangan tampilkan snackbar jika error hanyalah batas laju request sementara
-      if (!errText.toLowerCase().contains('too many requests')) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: Text(
-              errText,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            backgroundColor: const Color(0xFFEF4444),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      }
     }
   }
 

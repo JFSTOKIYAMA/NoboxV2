@@ -641,19 +641,12 @@ class NoboxApiService {
       debugPrint('Payload Keys: ${payload.keys.toList()}');
       debugPrint('======================================');
 
-      http.Response response = await http
-          .post(
-            uri,
-            headers: _buildHeaders(),
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 15));
+      int attempts = 0;
+      http.Response response = http.Response('', 500);
+      bool isSuccess = false;
 
-      // Auto-retry jika terkena rate limit server (Too many requests. Please try again after 1 second(s))
-      if (response.statusCode == 429 ||
-          response.body.toLowerCase().contains('too many requests')) {
-        debugPrint('NoboxApiService: Rate limited, waiting 1250ms and retrying automatically...');
-        await Future<void>.delayed(const Duration(milliseconds: 1250));
+      while (attempts < 3) {
+        attempts++;
         response = await http
             .post(
               uri,
@@ -661,65 +654,68 @@ class NoboxApiService {
               body: jsonEncode(payload),
             )
             .timeout(const Duration(seconds: 15));
-      }
 
-      debugPrint('=== [FORENSIC: Inbox/Send Response] ===');
-      debugPrint('Status Code: ${response.statusCode}');
-      debugPrint('Response Body: ${response.body}');
-      debugPrint('=======================================');
+        final String bodyLower = response.body.toLowerCase();
+        final bool isRateLimit = response.statusCode == 429 ||
+            bodyLower.contains('too many requests') ||
+            bodyLower.contains('try again after');
 
-      bool isSuccess = false;
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        try {
-          final dynamic data = jsonDecode(response.body);
-          if (data is Map) {
-            final dynamic err = data['Error'] ?? data['error'];
-            if (err != null &&
-                err.toString().isNotEmpty &&
-                err.toString() != 'null') {
-              _lastError = err is Map
-                  ? (err['Message']?.toString() ?? err.toString())
-                  : err.toString();
-              isSuccess = false;
-            } else if (data['IsError'] == true) {
-              _lastError = data['Message']?.toString() ??
-                  data['Error']?.toString() ??
-                  'Gagal mengirim pesan';
-              isSuccess = false;
+        if (isRateLimit && attempts < 3) {
+          final int waitMs = 1200 + (attempts * 500);
+          debugPrint('NoboxApiService: Rate limited (attempt $attempts), waiting ${waitMs}ms...');
+          await Future<void>.delayed(Duration(milliseconds: waitMs));
+          continue;
+        }
+
+        debugPrint('=== [FORENSIC: Inbox/Send Response (Attempt $attempts)] ===');
+        debugPrint('Status Code: ${response.statusCode}');
+        debugPrint('Response Body: ${response.body}');
+        debugPrint('=======================================');
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            final dynamic data = jsonDecode(response.body);
+            if (data is Map) {
+              final dynamic err = data['Error'] ?? data['error'];
+              if (err != null &&
+                  err.toString().isNotEmpty &&
+                  err.toString() != 'null') {
+                _lastError = err is Map
+                    ? (err['Message']?.toString() ?? err.toString())
+                    : err.toString();
+                isSuccess = false;
+              } else if (data['IsError'] == true) {
+                _lastError = data['Message']?.toString() ??
+                    data['Error']?.toString() ??
+                    'Gagal mengirim pesan';
+                isSuccess = false;
+              } else {
+                final String dataStr = (data['Data'] ?? '').toString();
+                if (dataStr.contains('Total Sent=0') && attempts < 3) {
+                  debugPrint('NoboxApiService: Total Sent=0, retrying after 1500ms...');
+                  await Future<void>.delayed(const Duration(milliseconds: 1500));
+                  continue;
+                }
+                isSuccess = true;
+                _lastError = null;
+              }
             } else {
               isSuccess = true;
               _lastError = null;
             }
-          } else {
+          } catch (_) {
             isSuccess = true;
             _lastError = null;
           }
-        } catch (_) {
-          isSuccess = true;
-          _lastError = null;
-        }
-      } else {
-        try {
-          final dynamic data = jsonDecode(response.body);
-          if (data is Map) {
-            final dynamic err = data['Error'] ?? data['error'];
-            if (err != null &&
-                err.toString().isNotEmpty &&
-                err.toString() != 'null') {
-              _lastError = err is Map
-                  ? (err['Message']?.toString() ?? err.toString())
-                  : err.toString();
-            } else if (data['Message'] != null) {
-              _lastError = data['Message'].toString();
-            } else {
-              _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
-            }
-          } else {
-            _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
+        } else {
+          if (attempts < 3) {
+            await Future<void>.delayed(const Duration(milliseconds: 1500));
+            continue;
           }
-        } catch (_) {
           _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
         }
+
+        break;
       }
 
       return isSuccess;
