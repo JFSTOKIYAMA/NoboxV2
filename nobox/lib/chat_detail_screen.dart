@@ -74,8 +74,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     if (!mounted) return;
     setState(() {
-      if (remoteMessages.isNotEmpty) {
-        _messages = remoteMessages;
+      final localMessages = _messages
+          .where((m) => m.id.startsWith('local_') || m.isPending)
+          .toList();
+      final List<ChatMessageItem> combined = [...remoteMessages];
+      for (final loc in localMessages) {
+        final bool alreadyInRemote = combined.any(
+          (m) => m.content.trim() == loc.content.trim() && m.isMe,
+        );
+        if (!alreadyInRemote) {
+          combined.add(loc);
+        }
+      }
+
+      if (combined.isNotEmpty) {
+        _messages = combined;
       } else {
         // Jika server baru/belum ada riwayat, tampilkan pesan pembuka
         _messages = [
@@ -100,15 +113,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       widget.chat.id,
       extId: widget.chat.extId,
     );
-    if (!mounted || remoteMessages.isEmpty) return;
+    if (!mounted) return;
 
-    final pendingMessages = _messages.where((m) => m.isPending).toList();
+    // Pertahankan SEMUA pesan lokal (baik yang masih pending maupun yang sudah berhasil dikirim)
+    // sampai server benar-benar mengembalikannya di remoteMessages
+    final localMessages = _messages
+        .where((m) => m.id.startsWith('local_') || m.isPending)
+        .toList();
+
     final List<ChatMessageItem> combined = [...remoteMessages];
-    for (final p in pendingMessages) {
-      if (!combined.any((m) => m.content == p.content && m.isMe)) {
-        combined.add(p);
+    for (final loc in localMessages) {
+      final bool alreadyInRemote = combined.any(
+        (m) => m.content.trim() == loc.content.trim() && m.isMe,
+      );
+      if (!alreadyInRemote) {
+        combined.add(loc);
       }
     }
+
+    if (combined.isEmpty) return;
 
     bool hasChanged = combined.length != _messages.length;
     if (!hasChanged) {

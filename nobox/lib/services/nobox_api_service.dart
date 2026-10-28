@@ -261,7 +261,6 @@ class NoboxApiService {
           'Tags',
           'CtRealId',
           'UsrNm',
-          '*',
         ],
       };
 
@@ -482,7 +481,6 @@ class NoboxApiService {
           'Up',
           'SenderName',
           'Ct',
-          '*',
         ],
         'EqualityFilter': equalityFilter,
       };
