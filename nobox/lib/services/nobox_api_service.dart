@@ -327,7 +327,11 @@ class NoboxApiService {
 
           // Group flag
           final dynamic grpId = map['GrpId'] ?? map['GroupId'];
-          final bool isGroup = (grpId != null && grpId.toString() != '0') ||
+          final String? groupIdStr =
+              (grpId != null && grpId.toString() != '0' && grpId.toString() != 'null')
+                  ? grpId.toString()
+                  : null;
+          final bool isGroup = groupIdStr != null ||
               name.toLowerCase().contains('grup') ||
               name.toLowerCase().contains('group');
 
@@ -369,6 +373,7 @@ class NoboxApiService {
             isGroup: isGroup,
             extId: extId,
             accountId: accountId,
+            groupId: groupIdStr,
           );
         }).whereType<ChatConversation>().toList();
       }
@@ -454,15 +459,19 @@ class NoboxApiService {
   }
 
   /// 3. Mengirim pesan dari NoBox Chat langsung ke nobox.ai (Inbox/Send)
-  /// Menggunakan spesifikasi resmi NoBox.Ai SDK:
-  /// - Endpoint: Inbox/Send
-  /// - Parameters: ExtId, ChannelId, AccountIds, BodyType = 1, Body
+  /// Sesuai spesifikasi resmi NoBox.ai REST API:
+  /// - URL: POST https://id.nobox.ai/Inbox/Send?Id={RoomId}
+  /// - Headers: Content-Type: application/json, Authorization: Bearer `AUTH_TOKEN`
+  /// - Payload 1-on-1: Body, BodyType (1), ChannelId, AccountIds, Attachment (""), ExtId, LinkId
+  /// - Payload Grup: Body, BodyType (1), ChannelId, AccountIds, Attachment (""), GroupId, GrpId
   Future<bool> sendMessage({
     required String roomId,
     required String content,
     String channelId = '1',
     String? accountId,
     String? extId,
+    bool isGroup = false,
+    String? groupId,
   }) async {
     if (!isLoggedIn) {
       _lastError = 'Belum masuk ke akun nobox.ai.';
@@ -470,10 +479,11 @@ class NoboxApiService {
     }
 
     try {
-      final String cleanRoomId = roomId.replaceAll(RegExp(r'[^0-9\-]'), '');
+      final String cleanRoomId = roomId.replaceAll(RegExp(r'[^0-9]'), '');
+      final String targetRoomId = cleanRoomId.isNotEmpty ? cleanRoomId : roomId;
       final int chanId = int.tryParse(channelId) ?? 1;
 
-      // 1. Tentukan AccountId yang valid
+      // 1. Tentukan AccountId yang valid (wajib string tunggal, misal: "1557")
       String effectiveAccountId = (accountId != null &&
               accountId.isNotEmpty &&
               accountId != '0' &&
@@ -492,49 +502,51 @@ class NoboxApiService {
             '';
       }
 
-      // 2. Tentukan ExtId penerima (Nomor WA / ID Telegram)
-      final String effectiveExtId = (extId != null &&
-              extId.isNotEmpty &&
-              extId != 'null' &&
-              !extId.startsWith('init_'))
-          ? extId
-          : cleanRoomId;
+      // 2. URL resmi Serenity: https://id.nobox.ai/Inbox/Send?Id={RoomId}
+      final Uri uri = Uri.parse('${baseUrl}Inbox/Send?Id=$targetRoomId');
 
+      // 3. Payload sesuai spesifikasi resmi NoBox.ai
       final Map<String, dynamic> payload = {
-        'ExtId': effectiveExtId,
-        'extId': effectiveExtId,
-        'ChannelId': chanId,
-        'channelId': chanId,
-        'AccountIds': effectiveAccountId,
-        'accountId': effectiveAccountId,
-        'BodyType': 1, // Official NoBox SDK BodyType.TEXT = 1
-        'bodyType': 1,
         'Body': content,
-        'body': content,
-        'text': content,
-        'Attachment': null,
+        'BodyType': 1,
+        'ChannelId': chanId,
+        'AccountIds': effectiveAccountId,
+        'Attachment': '',
       };
 
-      if (cleanRoomId.isNotEmpty) {
-        final numericId = int.tryParse(cleanRoomId);
-        payload['RoomId'] = numericId ?? cleanRoomId;
-        payload['roomId'] = numericId ?? cleanRoomId;
-        payload['Id'] = numericId ?? cleanRoomId;
+      if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
+        final dynamic effectiveGrpId =
+            int.tryParse(groupId ?? '') ?? (groupId ?? cleanRoomId);
+        payload['GroupId'] = effectiveGrpId;
+        payload['GrpId'] = effectiveGrpId;
+      } else {
+        // Format ExtId: nomor HP internasional tanpa + (misal 6282338765517)
+        String cleanExt = (extId ?? '').trim().replaceAll(RegExp(r'[^0-9]'), '');
+        if (cleanExt.startsWith('08')) {
+          cleanExt = '628${cleanExt.substring(2)}';
+        }
+        if (cleanExt.isEmpty) {
+          cleanExt = cleanRoomId;
+        }
+
+        payload['ExtId'] = cleanExt;
+        final int? numericLinkId = int.tryParse(targetRoomId);
+        if (numericLinkId != null) {
+          payload['LinkId'] = numericLinkId;
+        }
       }
 
       debugPrint(
-        'NoboxApiService: Sending message payload: ${jsonEncode(payload)}',
+        'NoboxApiService: Sending message to $uri with payload: ${jsonEncode(payload)}',
       );
 
-      // Coba kirim via endpoint resmi Inbox/Send
-      final Uri uri = Uri.parse('${baseUrl}Inbox/Send');
-      final response = await http
+      final http.Response response = await http
           .post(
             uri,
             headers: _buildHeaders(),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 15));
 
       debugPrint(
         'NoboxApiService: sendMessage response code: ${response.statusCode}, body: ${response.body}',
@@ -549,11 +561,11 @@ class NoboxApiService {
             if (err != null &&
                 err.toString().isNotEmpty &&
                 err.toString() != 'null') {
-              _lastError = err.toString();
+              _lastError = err is Map ? (err['Message']?.toString() ?? err.toString()) : err.toString();
               isSuccess = false;
             } else if (data['IsError'] == true) {
               _lastError = data['Message']?.toString() ??
-                  data['InitialText']?.toString() ??
+                  data['Error']?.toString() ??
                   'Gagal mengirim pesan';
               isSuccess = false;
             } else {
@@ -569,28 +581,24 @@ class NoboxApiService {
           _lastError = null;
         }
       } else {
-        _lastError = 'HTTP ${response.statusCode}: ${response.body}';
-      }
-
-      // Jika Inbox/Send tanpa parameter belum berhasil dan cleanRoomId ada, coba dengan ?Id=$cleanRoomId
-      if (!isSuccess && cleanRoomId.isNotEmpty) {
-        final Uri fallbackUri =
-            Uri.parse('${baseUrl}Inbox/Send?Id=$cleanRoomId');
-        final fbResponse = await http
-            .post(
-              fallbackUri,
-              headers: _buildHeaders(),
-              body: jsonEncode(payload),
-            )
-            .timeout(const Duration(seconds: 10));
-
-        debugPrint(
-          'NoboxApiService: Fallback sendMessage response: ${fbResponse.statusCode}, body: ${fbResponse.body}',
-        );
-
-        if (fbResponse.statusCode >= 200 && fbResponse.statusCode < 300) {
-          isSuccess = true;
-          _lastError = null;
+        try {
+          final dynamic data = jsonDecode(response.body);
+          if (data is Map) {
+            final dynamic err = data['Error'] ?? data['error'];
+            if (err != null &&
+                err.toString().isNotEmpty &&
+                err.toString() != 'null') {
+              _lastError = err is Map ? (err['Message']?.toString() ?? err.toString()) : err.toString();
+            } else if (data['Message'] != null) {
+              _lastError = data['Message'].toString();
+            } else {
+              _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
+            }
+          } else {
+            _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
+          }
+        } catch (_) {
+          _lastError = 'Gagal mengirim pesan (HTTP ${response.statusCode})';
         }
       }
 

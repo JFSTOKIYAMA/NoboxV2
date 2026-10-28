@@ -150,6 +150,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       channelId: widget.chat.channel == 'Telegram' ? '2' : '1',
       accountId: widget.chat.accountId,
       extId: widget.chat.extId,
+      isGroup: widget.chat.isGroup,
+      groupId: widget.chat.groupId,
     );
 
     if (!mounted) return;
@@ -182,9 +184,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (!success && mounted) {
       final String errText =
           _apiService.lastError ?? 'Gagal mengirim pesan ke nobox.ai';
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
-          content: Text(errText),
+          content: Text(
+            errText,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           backgroundColor: const Color(0xFFEF4444),
           behavior: SnackBarBehavior.floating,
           shape:
