@@ -144,12 +144,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     widget.onMessageSent?.call(text);
 
     // 2. Kirim pesan ke nobox.ai (Inbox/Send)
+    final String safeExt = (widget.chat.extId ?? '').length > 4
+        ? '${widget.chat.extId!.substring(0, 2)}***${widget.chat.extId!.substring(widget.chat.extId!.length - 2)}'
+        : (widget.chat.extId != null && widget.chat.extId!.isNotEmpty ? '***' : '(empty)');
+    debugPrint(
+      'ChatDetail: Pre-send check -> RoomId: ${widget.chat.id}, '
+      'Channel: ${widget.chat.channel}, '
+      'AccountId: ${widget.chat.accountId != null && widget.chat.accountId!.isNotEmpty}, '
+      'ExtId: $safeExt, '
+      'LinkId: ${widget.chat.linkId}, '
+      'IsGroup: ${widget.chat.isGroup}',
+    );
+
     final bool success = await _apiService.sendMessage(
       roomId: widget.chat.id,
       content: text,
       channelId: widget.chat.channel == 'Telegram' ? '2' : '1',
       accountId: widget.chat.accountId,
       extId: widget.chat.extId,
+      linkId: widget.chat.linkId,
       isGroup: widget.chat.isGroup,
       groupId: widget.chat.groupId,
     );

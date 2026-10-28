@@ -48,6 +48,7 @@ class NoboxApiService {
   bool _isLoggedIn = false;
 
   final Map<String, String> _channelAccountMap = {};
+  final Map<String, ChatConversation> _roomCache = {};
 
   bool get isLoggedIn => _isLoggedIn && _token != null && _token!.isNotEmpty;
   String? get currentUsername => _currentUsername;
@@ -155,6 +156,7 @@ class NoboxApiService {
     _lastError = null;
     _defaultAccountId = null;
     _channelAccountMap.clear();
+    _roomCache.clear();
     await AppPreferences.remove(_tokenPrefKey);
     await AppPreferences.remove(_defaultAccountIdPrefKey);
   }
@@ -270,6 +272,15 @@ class NoboxApiService {
           }
         }
 
+        if (items.isNotEmpty && items.first is Map) {
+          final sample = items.first as Map;
+          debugPrint('=== [FORENSIC: Chatrooms/List] ===');
+          debugPrint('Total chatrooms fetched: ${items.length}');
+          debugPrint('Columns: ${sample.keys.toList()}');
+          debugPrint('Sample RoomId: ${sample['Id']}, LinkId: ${sample['LinkId'] ?? sample['IdLink']}, ExtId: ${sample['CtIdExt'] ?? sample['ExtId'] ?? sample['CtNo']}');
+          debugPrint('==================================');
+        }
+
         return items.map((json) {
           if (json is! Map) return null;
           final map = Map<String, dynamic>.from(json);
@@ -277,21 +288,25 @@ class NoboxApiService {
           // ID
           final String id = map['Id']?.toString() ?? '';
 
-          // Name
-          final String name = (map['CtNm'] ??
-                  map['ContactName'] ??
-                  map['Ct'] ??
-                  map['Name'] ??
-                  map['Title'] ??
-                  'Tanpa Nama')
-              .toString();
+          // Name (Prioritaskan Contact Name -> Contact Real Name -> Contact Name unjoined -> Contact Number)
+          final dynamic rawNameVal = map['Ct'] ??
+              map['CtRealNm'] ??
+              map['CtNm'] ??
+              map['ContactName'] ??
+              map['Name'] ??
+              map['Title'];
+          String rawName = (rawNameVal ?? '').toString().trim();
+          if (rawName == 'null') rawName = '';
+          final String name = rawName.isNotEmpty
+              ? rawName
+              : ((map['CtIdExt'] ?? map['ExtId'] ?? map['CtNo'])?.toString() ?? 'Tanpa Nama');
 
-          // Subtitle / Group / Funnel
+          // Subtitle / Group / Funnel / Channel Account
           final String? subtitle =
-              map['FnNm']?.toString() ?? map['GroupNm']?.toString();
+              (map['FnNm'] ?? map['GroupNm'] ?? map['ChAcc'])?.toString();
 
           // Last message
-          String lastMsg = (map['LastMsg'] ?? map['Category'] ?? '').toString();
+          String lastMsg = (map['LastMsg'] ?? map['Msg'] ?? map['Body'] ?? map['Category'] ?? '').toString().trim();
           if (lastMsg.isEmpty || lastMsg == 'null') {
             lastMsg = 'Percakapan kosong';
           }
@@ -309,8 +324,12 @@ class NoboxApiService {
                   : 'WhatsApp';
 
           // Assigned Agent
-          final String assignedTo =
-              (map['UsrNm'] ?? map['AgentName'] ?? 'Belum Ditugaskan').toString();
+          final dynamic rawAgent = map['UsrNm'] ??
+              map['AgentName'] ??
+              map['ChAcc'] ??
+              map['UserName'] ??
+              'Belum Ditugaskan';
+          final String assignedTo = rawAgent.toString();
 
           // Status
           final dynamic stVal = map['St'];
@@ -335,23 +354,38 @@ class NoboxApiService {
               name.toLowerCase().contains('grup') ||
               name.toLowerCase().contains('group');
 
-          // ExtId (Nomor HP/ID Telegram)
+          // LinkId (CtId di Serenity adalah IdLink / primary key dari tabel Link)
+          final dynamic rawLinkId = map['CtId'] ??
+              map['LinkId'] ??
+              map['IdLink'] ??
+              map['LkId'] ??
+              map['Link'];
+          final String? linkId = (rawLinkId != null &&
+                  rawLinkId.toString() != '0' &&
+                  rawLinkId.toString() != 'null' &&
+                  rawLinkId.toString() != id)
+              ? rawLinkId.toString()
+              : null;
+
+          // ExtId (Nomor HP / ID Eksternal / ID Telegram)
           final String? rawExt = (map['CtIdExt'] ??
                   map['ExtId'] ??
                   map['CtExtId'] ??
                   map['IdExt'] ??
-                  map['Ct'] ??
                   map['CtNo'] ??
                   map['Phone'] ??
                   map['CtPhone'] ??
-                  map['CtId'])
-              ?.toString();
+                  map['ContactNumber'] ??
+                  map['Mobile'])
+              ?.toString()
+              .trim();
           final String extId = (rawExt != null && rawExt.isNotEmpty && rawExt != 'null')
               ? rawExt
-              : name;
+              : (RegExp(r'^[0-9+ \-]+$').hasMatch(name.trim()) ? name.trim() : '');
 
           // AccountId
-          final String? rawAcc = (map['AccId'] ??
+          final String? rawAcc = (map['ChAccId'] ??
+                  map['AccId'] ??
                   map['AccountId'] ??
                   map['IdAccount'] ??
                   map['AccountIds'])
@@ -360,7 +394,7 @@ class NoboxApiService {
               ? rawAcc
               : (_channelAccountMap[chId] ?? _defaultAccountId ?? _tenantId);
 
-          return ChatConversation(
+          final chat = ChatConversation(
             id: id,
             name: name,
             subtitle: subtitle,
@@ -371,10 +405,15 @@ class NoboxApiService {
             unreadCount: unreadCount,
             status: status,
             isGroup: isGroup,
-            extId: extId,
+            extId: extId.isNotEmpty ? extId : null,
             accountId: accountId,
             groupId: groupIdStr,
+            linkId: linkId,
           );
+          if (id.isNotEmpty) {
+            _roomCache[id] = chat;
+          }
+          return chat;
         }).whereType<ChatConversation>().toList();
       }
     } catch (e) {
@@ -470,6 +509,7 @@ class NoboxApiService {
     String channelId = '1',
     String? accountId,
     String? extId,
+    String? linkId,
     bool isGroup = false,
     String? groupId,
   }) async {
@@ -483,62 +523,101 @@ class NoboxApiService {
       final String targetRoomId = cleanRoomId.isNotEmpty ? cleanRoomId : roomId;
       final int chanId = int.tryParse(channelId) ?? 1;
 
+      // Lookup room cache jika extId, linkId, atau accountId tidak lengkap
+      final ChatConversation? cachedRoom = _roomCache[targetRoomId];
+
       // 1. Tentukan AccountId yang valid (wajib string tunggal, misal: "1557")
       String effectiveAccountId = (accountId != null &&
               accountId.isNotEmpty &&
               accountId != '0' &&
               accountId != 'null')
           ? accountId
-          : (_channelAccountMap[chanId.toString()] ??
+          : (cachedRoom?.accountId ??
+              _channelAccountMap[chanId.toString()] ??
               _defaultAccountId ??
               _tenantId ??
               '');
 
       if (effectiveAccountId.isEmpty) {
         await fetchAccounts();
-        effectiveAccountId = _channelAccountMap[chanId.toString()] ??
+        effectiveAccountId = cachedRoom?.accountId ??
+            _channelAccountMap[chanId.toString()] ??
             _defaultAccountId ??
             _tenantId ??
             '';
       }
 
-      // 2. Format ExtId: nomor HP internasional tanpa + (misal 6282338765517) atau ID Telegram
-      String cleanExt = (extId ?? '').trim().replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanExt.startsWith('08')) {
-        cleanExt = '628${cleanExt.substring(2)}';
-      }
-      if (cleanExt.isEmpty) {
-        cleanExt = cleanRoomId;
+      // 2. Format ExtId penerima (Nomor HP internasional tanpa + / ID Telegram)
+      String cleanExt = (extId ?? cachedRoom?.extId ?? '').trim();
+      final String digitsOnly = cleanExt.replaceAll(RegExp(r'[^0-9]'), '');
+      if (chanId == 1) {
+        // WhatsApp: nomor HP internasional tanpa '+' (contoh: 6282338765517)
+        if (digitsOnly.startsWith('08')) {
+          cleanExt = '628${digitsOnly.substring(2)}';
+        } else if (digitsOnly.startsWith('8')) {
+          cleanExt = '62$digitsOnly';
+        } else if (digitsOnly.isNotEmpty) {
+          cleanExt = digitsOnly;
+        }
+      } else {
+        // Telegram: ID numerik pengguna atau username tanpa @
+        if (digitsOnly.isNotEmpty) {
+          cleanExt = digitsOnly;
+        } else {
+          cleanExt = cleanExt.replaceAll('@', '');
+        }
       }
 
-      final int? numericLinkId = int.tryParse(targetRoomId);
+      // 3. Tentukan LinkId numerik (Int64 / long pada Serenity C#)
+      // LinkId HANYA dikirim jika merupakan CtId/LinkId yang valid dari Serenity.
+      // JANGAN PERNAH menyamakan LinkId dengan targetRoomId karena akan menyebabkan
+      // server gagal menemukan record Link dan memicu error "Id Link or Id External must have value".
+      final String? rawLink = (linkId != null &&
+              linkId.isNotEmpty &&
+              linkId != '0' &&
+              linkId != 'null' &&
+              linkId != targetRoomId &&
+              linkId != cleanRoomId)
+          ? linkId
+          : (cachedRoom?.linkId != null &&
+                  cachedRoom!.linkId != targetRoomId &&
+                  cachedRoom.linkId != cleanRoomId)
+              ? cachedRoom.linkId
+              : null;
+      final String cleanLinkDigits =
+          rawLink != null ? rawLink.replaceAll(RegExp(r'[^0-9]'), '') : '';
+      final int? numericLinkId =
+          cleanLinkDigits.isNotEmpty ? int.tryParse(cleanLinkDigits) : null;
 
-      // 3. URL resmi Serenity: menyertakan Id, IdLink, LinkId, IdExternal, ExtId pada query params
-      final Map<String, String> queryParams = {
-        'Id': targetRoomId,
-        'IdLink': targetRoomId,
-        'idLink': targetRoomId,
-        'LinkId': targetRoomId,
-      };
-      if (cleanExt.isNotEmpty) {
-        queryParams['IdExternal'] = cleanExt;
-        queryParams['idExternal'] = cleanExt;
-        queryParams['ExtId'] = cleanExt;
-        queryParams['extId'] = cleanExt;
+      // 4. Validasi pra-pengiriman: pastikan minimal salah satu dari LinkId atau ExtId bernilai
+      if ((numericLinkId == null || numericLinkId == 0) && cleanExt.isEmpty) {
+        _lastError =
+            'Id Link or Id External must have value. Pastikan kontak tujuan memiliki nomor telepon atau link percakapan yang valid.';
+        return false;
       }
-      final Uri uri =
-          Uri.parse('${baseUrl}Inbox/Send').replace(queryParameters: queryParams);
 
-      // 4. Payload sesuai spesifikasi resmi NoBox.ai
+      // 5. URL resmi NoBox.ai REST API: POST https://id.nobox.ai/Inbox/Send?Id={RoomId}
+      final Uri uri = Uri.parse('${baseUrl}Inbox/Send?Id=$targetRoomId');
+
+      // 6. Payload JSON murni sesuai kontrak REST API NoBox.ai
       final Map<String, dynamic> payload = {
         'Body': content,
         'BodyType': 1,
         'ChannelId': chanId,
         'AccountIds': effectiveAccountId,
         'Attachment': '',
-        'ExtId': cleanExt.isNotEmpty ? cleanExt : targetRoomId,
-        'LinkId': numericLinkId ?? targetRoomId,
       };
+
+      if (cleanExt.isNotEmpty) {
+        payload['ExtId'] = cleanExt;
+      }
+
+      // Hanya sertakan LinkId jika valid dan BUKAN targetRoomId
+      if (numericLinkId != null &&
+          numericLinkId > 0 &&
+          numericLinkId != int.tryParse(targetRoomId)) {
+        payload['LinkId'] = numericLinkId;
+      }
 
       if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
         final dynamic effectiveGrpId =
@@ -547,11 +626,22 @@ class NoboxApiService {
         payload['GrpId'] = effectiveGrpId;
       }
 
-      debugPrint(
-        'NoboxApiService: Sending message to $uri with payload: ${jsonEncode(payload)}',
-      );
+      // Diagnostik forensik aman (tanpa kredensial dan dengan data sensitif tersamar)
+      final String maskedExt = cleanExt.length > 4
+          ? '${cleanExt.substring(0, 2)}***${cleanExt.substring(cleanExt.length - 2)}'
+          : (cleanExt.isNotEmpty ? '***' : '(empty)');
 
-      http.Response response = await http
+      debugPrint('=== [FORENSIC: Inbox/Send Request] ===');
+      debugPrint('URI: $uri');
+      debugPrint('ChannelId: $chanId');
+      debugPrint('AccountId present: ${effectiveAccountId.isNotEmpty}');
+      debugPrint('ExtId: $maskedExt');
+      debugPrint('LinkId: $numericLinkId');
+      debugPrint('IsGroup: $isGroup, GroupId: $groupId');
+      debugPrint('Payload Keys: ${payload.keys.toList()}');
+      debugPrint('======================================');
+
+      final http.Response response = await http
           .post(
             uri,
             headers: _buildHeaders(),
@@ -559,54 +649,10 @@ class NoboxApiService {
           )
           .timeout(const Duration(seconds: 15));
 
-      debugPrint(
-        'NoboxApiService: sendMessage response code: ${response.statusCode}, body: ${response.body}',
-      );
-
-      // Jika server menolak JSON karena mengharapkan parameter Form-URL-Encoded
-      if (response.body.contains('Id Link or Id External')) {
-        debugPrint('NoboxApiService: Retrying with Form-URL-Encoded format...');
-        final Map<String, String> formPayload = {
-          'Id': targetRoomId,
-          'IdLink': targetRoomId,
-          'idLink': targetRoomId,
-          'LinkId': targetRoomId,
-          'linkId': targetRoomId,
-          'IdExternal': cleanExt,
-          'idExternal': cleanExt,
-          'ExtId': cleanExt,
-          'extId': cleanExt,
-          'Body': content,
-          'body': content,
-          'BodyType': '1',
-          'bodyType': '1',
-          'ChannelId': chanId.toString(),
-          'channelId': chanId.toString(),
-          'AccountIds': effectiveAccountId,
-          'accountId': effectiveAccountId,
-          'Attachment': '',
-        };
-        if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
-          final String grpStr = groupId ?? cleanRoomId;
-          formPayload['GroupId'] = grpStr;
-          formPayload['GrpId'] = grpStr;
-        }
-
-        final Map<String, String> formHeaders = Map<String, String>.from(_buildHeaders())
-          ..['Content-Type'] = 'application/x-www-form-urlencoded';
-
-        response = await http
-            .post(
-              uri,
-              headers: formHeaders,
-              body: formPayload,
-            )
-            .timeout(const Duration(seconds: 15));
-
-        debugPrint(
-          'NoboxApiService: Form-URL-Encoded response code: ${response.statusCode}, body: ${response.body}',
-        );
-      }
+      debugPrint('=== [FORENSIC: Inbox/Send Response] ===');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Response Body: ${response.body}');
+      debugPrint('=======================================');
 
       bool isSuccess = false;
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -617,7 +663,9 @@ class NoboxApiService {
             if (err != null &&
                 err.toString().isNotEmpty &&
                 err.toString() != 'null') {
-              _lastError = err is Map ? (err['Message']?.toString() ?? err.toString()) : err.toString();
+              _lastError = err is Map
+                  ? (err['Message']?.toString() ?? err.toString())
+                  : err.toString();
               isSuccess = false;
             } else if (data['IsError'] == true) {
               _lastError = data['Message']?.toString() ??
@@ -644,7 +692,9 @@ class NoboxApiService {
             if (err != null &&
                 err.toString().isNotEmpty &&
                 err.toString() != 'null') {
-              _lastError = err is Map ? (err['Message']?.toString() ?? err.toString()) : err.toString();
+              _lastError = err is Map
+                  ? (err['Message']?.toString() ?? err.toString())
+                  : err.toString();
             } else if (data['Message'] != null) {
               _lastError = data['Message'].toString();
             } else {

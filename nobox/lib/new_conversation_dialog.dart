@@ -55,12 +55,16 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
     }
 
     String contactName = 'Percakapan Baru';
+    String? extId;
+    String? linkId;
     if (_toType == 'Contact' && _selectedContact != '--select--') {
       contactName = _selectedContact.split(' - ').first;
     } else if (_toType == 'Manual' && _manualInputController.text.trim().isNotEmpty) {
       contactName = _manualInputController.text.trim();
+      extId = _manualInputController.text.trim();
     } else if (_toType == 'Link' && _linkInputController.text.trim().isNotEmpty) {
       contactName = 'Link Kontak';
+      linkId = _linkInputController.text.trim();
     }
 
     final ChatConversation newChat = ChatConversation(
@@ -75,6 +79,9 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
       assignedTo: _selectedAccount,
       status: 'Assigned',
       isGroup: _selectedChatType == 'Group',
+      extId: extId,
+      accountId: _selectedAccount != '--select--' ? _selectedAccount : null,
+      linkId: linkId,
     );
 
     widget.onCreated?.call(newChat);

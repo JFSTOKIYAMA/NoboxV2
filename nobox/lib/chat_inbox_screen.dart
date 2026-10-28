@@ -22,6 +22,7 @@ class ChatConversation {
   final String? extId;
   final String? accountId;
   final String? groupId;
+  final String? linkId;
 
   const ChatConversation({
     required this.id,
@@ -39,6 +40,7 @@ class ChatConversation {
     this.extId,
     this.accountId,
     this.groupId,
+    this.linkId,
   });
 }
 
@@ -525,6 +527,8 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       isGroup: old.isGroup,
                       extId: old.extId,
                       accountId: old.accountId,
+                      groupId: old.groupId,
+                      linkId: old.linkId,
                     );
                   }
                 });
