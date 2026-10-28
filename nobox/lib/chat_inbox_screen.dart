@@ -19,6 +19,8 @@ class ChatConversation {
   final bool isGroup;
   final String? avatarUrl;
   final bool isSpecialMessage; // e.g. Unsupported message or sticker
+  final String? extId;
+  final String? accountId;
 
   const ChatConversation({
     required this.id,
@@ -33,6 +35,8 @@ class ChatConversation {
     this.isGroup = false,
     this.avatarUrl,
     this.isSpecialMessage = false,
+    this.extId,
+    this.accountId,
   });
 }
 

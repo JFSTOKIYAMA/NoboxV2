@@ -123,21 +123,11 @@ class _LoginScreenState extends State<LoginScreen>
       if (success) {
         _navigateToDestination();
       } else {
-        // Fallback ramah sesi jika jaringan lokal sedang uji coba
-        if (username.contains('@') && password.length >= 4) {
-          await NoboxApiService().setSessionToken(
-            'session-${DateTime.now().millisecondsSinceEpoch}',
-            username: username,
-          );
-          if (!mounted) return;
-          _navigateToDestination();
-        } else {
-          setState(() {
-            _isLoading = false;
-            _errorMessage =
-                'Kredensial tidak valid. Silakan periksa kembali email & kata sandi.';
-          });
-        }
+        setState(() {
+          _isLoading = false;
+          _errorMessage = NoboxApiService().lastError ??
+              'Gagal masuk ke nobox.ai. Periksa kembali email dan kata sandi Anda.';
+        });
       }
     } catch (e) {
       if (!mounted) return;
@@ -154,6 +144,18 @@ class _LoginScreenState extends State<LoginScreen>
       _passwordController.text = 'nobox123';
       _errorMessage = null;
     });
+  }
+
+  void _enterDemoMode() async {
+    final String user = _usernameController.text.trim().isNotEmpty
+        ? _usernameController.text.trim()
+        : 'dfawwas23@gmail.com';
+    await NoboxApiService().setSessionToken(
+      'demo-${DateTime.now().millisecondsSinceEpoch}',
+      username: user,
+    );
+    if (!mounted) return;
+    _navigateToDestination();
   }
 
   void _navigateToDestination() {
@@ -732,6 +734,29 @@ class _LoginScreenState extends State<LoginScreen>
                                                     ),
                                                   ),
                                           ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Center(
+                                    child: TextButton(
+                                      onPressed: _enterDemoMode,
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: Text(
+                                        'Atau masuk via Mode Demo (Offline)',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: textMuted.withValues(alpha: 0.8),
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ),

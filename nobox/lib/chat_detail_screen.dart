@@ -83,10 +83,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final remoteMessages = await _apiService.getMessages(widget.chat.id);
     if (!mounted || remoteMessages.isEmpty) return;
 
-    if (remoteMessages.length != _messages.length ||
-        (remoteMessages.isNotEmpty && remoteMessages.last.id != _messages.last.id)) {
+    final pendingMessages = _messages.where((m) => m.isPending).toList();
+    final List<ChatMessageItem> combined = [...remoteMessages];
+    for (final p in pendingMessages) {
+      if (!combined.any((m) => m.content == p.content && m.isMe)) {
+        combined.add(p);
+      }
+    }
+
+    if (combined.length != _messages.length ||
+        (combined.isNotEmpty && combined.last.id != _messages.last.id)) {
       setState(() {
-        _messages = remoteMessages;
+        _messages = combined;
       });
       _scrollToBottom();
     }
@@ -134,6 +142,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       roomId: widget.chat.id,
       content: text,
       channelId: widget.chat.channel == 'Telegram' ? '2' : '1',
+      accountId: widget.chat.accountId,
+      extId: widget.chat.extId,
     );
 
     if (!mounted) return;
@@ -151,6 +161,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         );
       }
     });
+
+    if (success && mounted) {
+      // Segera rekonsiliasi pesan dari server nobox.ai setelah pengiriman berhasil
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) {
+          _syncMessagesSilently();
+        }
+      });
+    }
 
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
