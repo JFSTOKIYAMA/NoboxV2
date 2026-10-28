@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'chat_inbox_screen.dart';
+import 'services/app_theme_controller.dart';
 
 /// Dialog "New Conversation" sesuai rancangan form dengan pendekatan Anti-AI Slop:
 /// Modern, presisi, interaktif, dan rapi.
@@ -90,17 +91,31 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = AppThemeController.instance.isDarkMode;
     const Color brandPrimary = Color(0xFF0066FF);
-    const Color surfaceBg = Color(0xFF111726);
-    const Color inputBg = Color(0xFF161F33);
-    const Color borderColor = Color(0xFF26334D);
+    final Color surfaceBg =
+        isDark ? const Color(0xFF111726) : Colors.white;
+    final Color inputBg =
+        isDark ? const Color(0xFF161F33) : const Color(0xFFF8FAFC);
+    final Color borderColor =
+        isDark ? const Color(0xFF26334D) : const Color(0xFFE2E8F0);
+    final Color textColor =
+        isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color labelColor =
+        isDark ? Colors.white : const Color(0xFF334155);
+    final Color hintColor =
+        isDark ? Colors.white.withValues(alpha: 0.35) : const Color(0xFF94A3B8);
+    final Color closeIconColor =
+        isDark ? Colors.white60 : const Color(0xFF64748B);
 
     return Dialog(
       backgroundColor: surfaceBg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
         side: BorderSide(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : const Color(0xFFE2E8F0),
         ),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -128,9 +143,9 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      color: Colors.white60,
+                      color: closeIconColor,
                       size: 22,
                     ),
                     padding: EdgeInsets.zero,
@@ -144,6 +159,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               // 1. Row: Chat
               _buildFormRow(
                 label: 'Chat',
+                labelColor: labelColor,
                 child: _buildDropdown(
                   value: _selectedChatType,
                   items: _chatTypes,
@@ -152,6 +168,8 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                   },
                   inputBg: inputBg,
                   borderColor: borderColor,
+                  textColor: textColor,
+                  isDark: isDark,
                 ),
               ),
 
@@ -160,6 +178,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               // 2. Row: Channel
               _buildFormRow(
                 label: 'Channel',
+                labelColor: labelColor,
                 child: _buildDropdown(
                   value: _selectedChannel,
                   items: _channels,
@@ -168,6 +187,8 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                   },
                   inputBg: inputBg,
                   borderColor: borderColor,
+                  textColor: textColor,
+                  isDark: isDark,
                 ),
               ),
 
@@ -176,6 +197,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               // 3. Row: Account
               _buildFormRow(
                 label: 'Account',
+                labelColor: labelColor,
                 child: _buildDropdown(
                   value: _selectedAccount,
                   items: _accounts,
@@ -184,6 +206,8 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                   },
                   inputBg: inputBg,
                   borderColor: borderColor,
+                  textColor: textColor,
+                  isDark: isDark,
                 ),
               ),
 
@@ -192,6 +216,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               // 4. Row: To (Radio Group)
               _buildFormRow(
                 label: 'To',
+                labelColor: labelColor,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -203,15 +228,15 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                     children: [
                       Row(
                         children: [
-                          _buildRadioOption('Contact'),
+                          _buildRadioOption('Contact', isDark),
                           const SizedBox(width: 16),
-                          _buildRadioOption('Link'),
+                          _buildRadioOption('Link', isDark),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _buildRadioOption('Manual'),
+                          _buildRadioOption('Manual', isDark),
                         ],
                       ),
                     ],
@@ -225,6 +250,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               if (_toType == 'Contact')
                 _buildFormRow(
                   label: 'Contact',
+                  labelColor: labelColor,
                   child: _buildDropdown(
                     value: _selectedContact,
                     items: _contacts,
@@ -233,18 +259,21 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                     },
                     inputBg: inputBg,
                     borderColor: borderColor,
+                    textColor: textColor,
+                    isDark: isDark,
                   ),
                 )
               else if (_toType == 'Link')
                 _buildFormRow(
                   label: 'Link',
+                  labelColor: labelColor,
                   child: TextField(
                     controller: _linkInputController,
-                    style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                    style: TextStyle(color: textColor, fontSize: 13.5),
                     decoration: InputDecoration(
                       hintText: 'https://t.me/... atau wa.me/...',
                       hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: hintColor,
                         fontSize: 12.5,
                       ),
                       filled: true,
@@ -252,11 +281,15 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: borderColor),
+                        borderSide: BorderSide(color: borderColor),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: borderColor),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: brandPrimary, width: 1.5),
                       ),
                     ),
                   ),
@@ -264,13 +297,14 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               else
                 _buildFormRow(
                   label: 'Manual',
+                  labelColor: labelColor,
                   child: TextField(
                     controller: _manualInputController,
-                    style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                    style: TextStyle(color: textColor, fontSize: 13.5),
                     decoration: InputDecoration(
                       hintText: 'Nomor telepon atau username',
                       hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: hintColor,
                         fontSize: 12.5,
                       ),
                       filled: true,
@@ -278,11 +312,15 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: borderColor),
+                        borderSide: BorderSide(color: borderColor),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: borderColor),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: brandPrimary, width: 1.5),
                       ),
                     ),
                   ),
@@ -297,8 +335,11 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                     child: OutlinedButton(
                       onPressed: () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: brandPrimary,
-                        side: const BorderSide(color: brandPrimary, width: 1.4),
+                        foregroundColor: isDark ? brandPrimary : const Color(0xFF475569),
+                        side: BorderSide(
+                          color: isDark ? brandPrimary : const Color(0xFFCBD5E1),
+                          width: 1.2,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
@@ -346,17 +387,21 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
     );
   }
 
-  Widget _buildFormRow({required String label, required Widget child}) {
+  Widget _buildFormRow({
+    required String label,
+    required Widget child,
+    required Color labelColor,
+  }) {
     return Row(
       children: [
         SizedBox(
           width: 80,
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: labelColor,
             ),
           ),
         ),
@@ -372,6 +417,8 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
     required ValueChanged<String?> onChanged,
     required Color inputBg,
     required Color borderColor,
+    required Color textColor,
+    required bool isDark,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
@@ -384,14 +431,14 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
-          dropdownColor: const Color(0xFF161F33),
-          icon: const Icon(
+          dropdownColor: isDark ? const Color(0xFF161F33) : Colors.white,
+          icon: Icon(
             Icons.keyboard_arrow_down_rounded,
-            color: Colors.white70,
+            color: isDark ? Colors.white70 : const Color(0xFF64748B),
             size: 22,
           ),
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: textColor,
             fontSize: 13.5,
             fontWeight: FontWeight.w500,
           ),
@@ -402,8 +449,10 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
                 item,
                 style: TextStyle(
                   color: item == '--select--'
-                      ? Colors.white.withValues(alpha: 0.45)
-                      : Colors.white,
+                      ? (isDark
+                          ? Colors.white.withValues(alpha: 0.45)
+                          : const Color(0xFF94A3B8))
+                      : textColor,
                 ),
               ),
             );
@@ -414,7 +463,7 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
     );
   }
 
-  Widget _buildRadioOption(String title) {
+  Widget _buildRadioOption(String title, bool isDark) {
     const Color brandPrimary = Color(0xFF0066FF);
     final bool isSelected = _toType == title;
 
@@ -436,7 +485,11 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? brandPrimary : Colors.white.withValues(alpha: 0.4),
+                  color: isSelected
+                      ? brandPrimary
+                      : (isDark
+                          ? Colors.white.withValues(alpha: 0.4)
+                          : const Color(0xFFCBD5E1)),
                   width: 2,
                 ),
               ),
@@ -459,7 +512,11 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                color: isSelected
+                    ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.7)
+                        : const Color(0xFF475569)),
               ),
             ),
           ],

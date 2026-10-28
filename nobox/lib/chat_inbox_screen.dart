@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'chat_detail_screen.dart';
 import 'login_screen.dart';
 import 'new_conversation_dialog.dart';
+import 'services/app_theme_controller.dart';
 import 'services/nobox_api_service.dart';
 
 /// Model untuk item percakapan NoBox Chat
@@ -141,172 +142,204 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color brandPrimary = Color(0xFF0066FF);
-    const Color brandAccent = Color(0xFF38BDF8);
-    const Color bgCanvas = Color(0xFF090D16);
-    const Color surfaceCard = Color(0xFF111726);
+    return ListenableBuilder(
+      listenable: AppThemeController.instance,
+      builder: (context, _) {
+        final bool isDark = AppThemeController.instance.isDarkMode;
+        const Color brandPrimary = Color(0xFF0066FF);
+        final Color brandAccent =
+            isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+        final Color bgCanvas =
+            isDark ? const Color(0xFF090D16) : const Color(0xFFF8FAFC);
+        final Color surfaceCard =
+            isDark ? const Color(0xFF111726) : Colors.white;
+        final Color headerBg =
+            isDark ? const Color(0xFF0D1322) : Colors.white;
+        final Color borderColor =
+            isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFFE2E8F0);
+        final Color tabContainerBg =
+            isDark ? const Color(0xFF0D1322) : Colors.white;
+        final Color dividerColor =
+            isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9);
 
-    return Scaffold(
-      backgroundColor: bgCanvas,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(68),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D1322),
-            border: Border(
-              bottom: BorderSide(
-                color: Colors.white.withValues(alpha: 0.07),
+        return Scaffold(
+          backgroundColor: bgCanvas,
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(68),
+            child: Container(
+              decoration: BoxDecoration(
+                color: headerBg,
+                border: Border(
+                  bottom: BorderSide(
+                    color: borderColor,
+                  ),
+                ),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: _isSearchOpen
+                      ? _buildSearchBar(isDark)
+                      : _buildNormalAppBar(brandAccent, isDark),
+                ),
               ),
             ),
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: _isSearchOpen
-                  ? _buildSearchBar()
-                  : _buildNormalAppBar(brandAccent),
-            ),
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          // 1. Modern Segmented Tab Bar (Pill selector)
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            color: const Color(0xFF0D1322),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: List.generate(_tabs.length, (index) {
-                  final String tab = _tabs[index];
-                  final bool isSelected = _selectedTabIndex == index;
-                  final int count = _getTabCount(tab);
+          body: Column(
+            children: [
+              // 1. Modern Segmented Tab Bar (Pill selector)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                color: tabContainerBg,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: List.generate(_tabs.length, (index) {
+                      final String tab = _tabs[index];
+                      final bool isSelected = _selectedTabIndex == index;
+                      final int count = _getTabCount(tab);
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedTabIndex = index;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? brandPrimary
-                              : Colors.white.withValues(alpha: 0.05),
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _selectedTabIndex = index;
+                            });
+                          },
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? brandPrimary
-                                : Colors.white.withValues(alpha: 0.08),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              tab,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: isSelected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? brandPrimary
+                                  : (isDark
+                                      ? Colors.white.withValues(alpha: 0.05)
+                                      : const Color(0xFFF1F5F9)),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
                                 color: isSelected
-                                    ? Colors.white
-                                    : Colors.white.withValues(alpha: 0.65),
+                                    ? brandPrimary
+                                    : (isDark
+                                        ? Colors.white.withValues(alpha: 0.08)
+                                        : const Color(0xFFE2E8F0)),
                               ),
                             ),
-                            if (count > 0) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 1.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? Colors.white.withValues(alpha: 0.25)
-                                      : Colors.white.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '$count',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  tab,
                                   style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
                                     color: isSelected
                                         ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.8),
+                                        : (isDark
+                                            ? Colors.white.withValues(alpha: 0.65)
+                                            : const Color(0xFF64748B)),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ],
+                                if (count > 0) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 1.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? Colors.white.withValues(alpha: 0.25)
+                                          : (isDark
+                                              ? Colors.white.withValues(alpha: 0.1)
+                                              : const Color(0xFFCBD5E1)),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : (isDark
+                                                ? Colors.white.withValues(alpha: 0.8)
+                                                : const Color(0xFF334155)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                }),
+                      );
+                    }),
+                  ),
+                ),
               ),
-            ),
+
+              // 2. Chat Conversation List dengan Pull-to-Refresh
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _syncFromNoboxAi,
+                  color: brandAccent,
+                  backgroundColor: surfaceCard,
+                  child: _filteredConversations.isEmpty
+                      ? _buildEmptyState(isDark)
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: _filteredConversations.length,
+                          separatorBuilder: (_, _) => Divider(
+                            height: 1,
+                            thickness: 0.6,
+                            indent: 78,
+                            endIndent: 16,
+                            color: dividerColor,
+                          ),
+                          itemBuilder: (context, index) {
+                            final ChatConversation chat =
+                                _filteredConversations[index];
+                            return _buildChatRow(
+                              chat,
+                              surfaceCard,
+                              brandPrimary,
+                              isDark,
+                            );
+                          },
+                        ),
+                ),
+              ),
+            ],
           ),
 
-          // 2. Chat Conversation List dengan Pull-to-Refresh
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _syncFromNoboxAi,
-              color: brandAccent,
-              backgroundColor: const Color(0xFF161F33),
-              child: _filteredConversations.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.separated(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _filteredConversations.length,
-                      separatorBuilder: (_, _) => Divider(
-                        height: 1,
-                        thickness: 0.6,
-                        indent: 78,
-                        endIndent: 16,
-                        color: Colors.white.withValues(alpha: 0.05),
-                      ),
-                      itemBuilder: (context, index) {
-                        final ChatConversation chat =
-                            _filteredConversations[index];
-                        return _buildChatRow(chat, surfaceCard, brandPrimary);
-                      },
-                    ),
+          // 3. Floating Action Button (New Chat)
+          floatingActionButton: FloatingActionButton(
+            onPressed: _showNewChatModal,
+            backgroundColor: brandPrimary,
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              color: Colors.white,
+              size: 28,
             ),
           ),
-        ],
-      ),
-
-      // 3. Floating Action Button (New Chat)
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showNewChatModal,
-        backgroundColor: brandPrimary,
-        elevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: const Icon(
-          Icons.add_rounded,
-          color: Colors.white,
-          size: 28,
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -315,7 +348,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     return _conversations.where((c) => c.status == tab).length;
   }
 
-  Widget _buildNormalAppBar(Color brandAccent) {
+  Widget _buildNormalAppBar(Color brandAccent, bool isDark) {
     return Row(
       children: [
         // Logo Nobox Icon Container
@@ -324,10 +357,14 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           height: 38,
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : const Color(0xFFE2E8F0),
             ),
           ),
           child: Image.asset(
@@ -350,13 +387,13 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             children: [
               Row(
                 children: [
-                  const Text(
+                  Text(
                     'NoBox',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.4,
-                      color: Colors.white,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -395,14 +432,18 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.6)
+                            : const Color(0xFF64748B),
                       ),
                     ),
                     const SizedBox(width: 3),
                     Icon(
                       Icons.arrow_drop_down_rounded,
                       size: 14,
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.4)
+                          : const Color(0xFF94A3B8),
                     ),
                   ],
                 ),
@@ -426,7 +467,11 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           ),
         IconButton(
           tooltip: 'Cari percakapan',
-          icon: const Icon(Icons.search_rounded, color: Colors.white70, size: 22),
+          icon: Icon(
+            Icons.search_rounded,
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
+            size: 22,
+          ),
           onPressed: () {
             setState(() {
               _isSearchOpen = true;
@@ -435,26 +480,39 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         ),
         IconButton(
           tooltip: 'Filter saluran',
-          icon: const Icon(Icons.tune_rounded, color: Colors.white70, size: 22),
+          icon: Icon(
+            Icons.tune_rounded,
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
+            size: 22,
+          ),
           onPressed: () {
             _showFilterBottomSheet(context);
           },
         ),
-        if (widget.onBackToLoading != null)
-          IconButton(
-            tooltip: 'Preview Loading Screen',
-            icon: Icon(Icons.replay_rounded, color: brandAccent, size: 22),
-            onPressed: widget.onBackToLoading,
+        // Tombol Gelap / Terang (Icon sesuai tema aktif)
+        IconButton(
+          tooltip: isDark ? 'Mode Gelap aktif (Ketuk untuk Mode Terang)' : 'Mode Terang aktif (Ketuk untuk Mode Gelap)',
+          icon: Icon(
+            isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+            color: isDark ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B),
+            size: 22,
           ),
+          onPressed: () {
+            AppThemeController.instance.toggleTheme();
+          },
+        ),
       ],
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(bool isDark) {
     return Row(
       children: [
         IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
           onPressed: () {
             setState(() {
               _isSearchOpen = false;
@@ -467,11 +525,16 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           child: TextField(
             controller: _searchController,
             autofocus: true,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+              fontSize: 14,
+            ),
             decoration: InputDecoration(
               hintText: 'Cari nama, pesan, atau institusi...',
               hintStyle: TextStyle(
-                color: Colors.white.withValues(alpha: 0.4),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.4)
+                    : const Color(0xFF94A3B8),
                 fontSize: 13.5,
               ),
               border: InputBorder.none,
@@ -485,7 +548,11 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         ),
         if (_searchQuery.isNotEmpty)
           IconButton(
-            icon: const Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
+            icon: Icon(
+              Icons.clear_rounded,
+              color: isDark ? Colors.white70 : const Color(0xFF64748B),
+              size: 18,
+            ),
             onPressed: () {
               setState(() {
                 _searchQuery = '';
@@ -501,6 +568,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     ChatConversation chat,
     Color surfaceCard,
     Color brandPrimary,
+    bool isDark,
   ) {
     return InkWell(
       onTap: () async {
@@ -547,7 +615,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         child: Row(
           children: [
             // Avatar dengan badge icon channel
-            _buildAvatar(chat),
+            _buildAvatar(chat, isDark),
 
             const SizedBox(width: 14),
 
@@ -570,7 +638,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                             fontWeight: chat.unreadCount > 0
                                 ? FontWeight.w700
                                 : FontWeight.w600,
-                            color: Colors.white,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
                           ),
                         ),
                       ),
@@ -582,8 +650,10 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           color: chat.unreadCount > 0
-                              ? const Color(0xFF38BDF8)
-                              : Colors.white.withValues(alpha: 0.4),
+                              ? const Color(0xFF0066FF)
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.4)
+                                  : const Color(0xFF94A3B8)),
                           fontWeight: chat.unreadCount > 0
                               ? FontWeight.w600
                               : FontWeight.w400,
@@ -602,7 +672,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.45),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.45)
+                            : const Color(0xFF64748B),
                       ),
                     ),
                   ],
@@ -642,7 +714,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                                   fontSize: 12.5,
                                   color: chat.lastMessage.contains('Unsupported')
                                       ? const Color(0xFFF87171)
-                                      : Colors.white.withValues(alpha: 0.65),
+                                      : (isDark
+                                          ? Colors.white.withValues(alpha: 0.65)
+                                          : const Color(0xFF475569)),
                                   fontWeight: chat.unreadCount > 0
                                       ? FontWeight.w600
                                       : FontWeight.w400,
@@ -697,7 +771,25 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     );
   }
 
-  Widget _buildAvatar(ChatConversation chat) {
+  Widget _buildAvatar(ChatConversation chat, bool isDark) {
+    final Color avatarBg = chat.isGroup
+        ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
+        : (isDark
+            ? const Color(0xFF1E3A8A).withValues(alpha: 0.4)
+            : const Color(0xFFE0F2FE));
+    final Color avatarBorder = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : (chat.isGroup ? const Color(0xFFE2E8F0) : const Color(0xFFBAE6FD));
+    final Color textColor = isDark
+        ? const Color(0xFF38BDF8)
+        : const Color(0xFF0284C7);
+    final Color groupIconColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
+    final Color badgeBorderColor = isDark
+        ? const Color(0xFF090D16)
+        : Colors.white;
+
     return Stack(
       children: [
         // Lingkaran Avatar
@@ -706,28 +798,27 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           height: 48,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: chat.isGroup
-                ? const Color(0xFF1E293B)
-                : const Color(0xFF1E3A8A).withValues(alpha: 0.4),
+            color: avatarBg,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: avatarBorder,
+              width: 1.2,
             ),
           ),
           child: Center(
             child: chat.isGroup
-                ? const Icon(
+                ? Icon(
                     Icons.groups_rounded,
-                    color: Color(0xFF94A3B8),
+                    color: groupIconColor,
                     size: 24,
                   )
                 : Text(
                     chat.name.isNotEmpty
                         ? chat.name.substring(0, 1).toUpperCase()
                         : '?',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF38BDF8),
+                      color: textColor,
                     ),
                   ),
           ),
@@ -739,9 +830,16 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           right: 0,
           child: Container(
             padding: const EdgeInsets.all(2.5),
-            decoration: const BoxDecoration(
-              color: Color(0xFF090D16),
+            decoration: BoxDecoration(
+              color: badgeBorderColor,
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
             ),
             child: Container(
               padding: const EdgeInsets.all(2),
@@ -807,7 +905,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark) {
     final bool isSearchActive = _searchQuery.trim().isNotEmpty;
 
     return Center(
@@ -821,10 +919,14 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : const Color(0xFFE2E8F0),
                 ),
               ),
               child: Center(
@@ -833,7 +935,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       ? Icons.search_off_rounded
                       : Icons.chat_bubble_outline_rounded,
                   size: 30,
-                  color: Colors.white.withValues(alpha: 0.35),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.35)
+                      : const Color(0xFF94A3B8),
                 ),
               ),
             ),
@@ -845,7 +949,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.85),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.85)
+                    : const Color(0xFF0F172A),
                 letterSpacing: 0.2,
               ),
             ),
@@ -858,7 +964,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               style: TextStyle(
                 fontSize: 12.5,
                 height: 1.5,
-                color: Colors.white.withValues(alpha: 0.45),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.45)
+                    : const Color(0xFF64748B),
               ),
             ),
             const SizedBox(height: 20),
@@ -882,13 +990,19 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   }
 
   void _showFilterBottomSheet(BuildContext context) {
+    final bool isDark = AppThemeController.instance.isDarkMode;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF0F1523),
+      backgroundColor: isDark ? const Color(0xFF0F1523) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
+        final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+        final Color handleColor = isDark
+            ? Colors.white.withValues(alpha: 0.2)
+            : const Color(0xFFCBD5E1);
+
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -900,34 +1014,49 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: handleColor,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Filter Saluran & Akun',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: textColor,
                 ),
               ),
               const SizedBox(height: 16),
               ListTile(
-                leading: const Icon(Icons.all_inclusive_rounded, color: Colors.white),
-                title: const Text('Semua Saluran', style: TextStyle(color: Colors.white)),
+                leading: Icon(
+                  Icons.all_inclusive_rounded,
+                  color: isDark ? Colors.white : const Color(0xFF0066FF),
+                ),
+                title: Text(
+                  'Semua Saluran',
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 onTap: () => Navigator.pop(ctx),
               ),
               ListTile(
                 leading: const Icon(Icons.send_rounded, color: Color(0xFF0088CC)),
-                title: const Text('Telegram (Awas)', style: TextStyle(color: Colors.white)),
+                title: Text(
+                  'Telegram (Awas)',
+                  style: TextStyle(color: textColor),
+                ),
                 onTap: () => Navigator.pop(ctx),
               ),
               ListTile(
                 leading: const Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
-                title: const Text('WhatsApp (Fawwas)', style: TextStyle(color: Colors.white)),
+                title: Text(
+                  'WhatsApp (Fawwas)',
+                  style: TextStyle(color: textColor),
+                ),
                 onTap: () => Navigator.pop(ctx),
               ),
             ],
@@ -938,6 +1067,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   }
 
   void _showNoboxAiConnectDialog() {
+    final bool isDark = AppThemeController.instance.isDarkMode;
     final userController =
         TextEditingController(text: _apiService.currentUsername ?? '');
     final passController = TextEditingController();
@@ -948,19 +1078,44 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final Color dialogBg =
+                isDark ? const Color(0xFF111726) : Colors.white;
+            final Color titleColor =
+                isDark ? Colors.white : const Color(0xFF0F172A);
+            final Color descColor = isDark
+                ? Colors.white.withValues(alpha: 0.6)
+                : const Color(0xFF64748B);
+            final Color inputBg =
+                isDark ? const Color(0xFF161F33) : const Color(0xFFF8FAFC);
+            final Color inputBorder = isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : const Color(0xFFE2E8F0);
+            final Color inputTextColor =
+                isDark ? Colors.white : const Color(0xFF0F172A);
+            final Color inputLabelColor =
+                isDark ? Colors.white70 : const Color(0xFF64748B);
+
             return AlertDialog(
-              backgroundColor: const Color(0xFF111726),
+              backgroundColor: dialogBg,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
-              title: const Row(
+              title: Row(
                 children: [
-                  Icon(Icons.cloud_sync_rounded, color: Color(0xFF0066FF)),
-                  SizedBox(width: 8),
+                  const Icon(Icons.cloud_sync_rounded, color: Color(0xFF0066FF)),
+                  const SizedBox(width: 8),
                   Text(
                     'Koneksi nobox.ai',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
+                    ),
                   ),
                 ],
               ),
@@ -972,32 +1127,49 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                     _apiService.isLoggedIn
                         ? 'Akun aktif: ${_apiService.currentUsername}\nServer: id.nobox.ai'
                         : 'Masukkan kredensial akun nobox.ai untuk sinkronisasi otomatis.',
-                    style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.6)),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: descColor,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   if (!_apiService.isLoggedIn) ...[
                     TextField(
                       controller: userController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      style: TextStyle(color: inputTextColor, fontSize: 13.5),
                       decoration: InputDecoration(
                         labelText: 'Username / Email',
-                        labelStyle: const TextStyle(color: Colors.white70),
+                        labelStyle: TextStyle(color: inputLabelColor),
                         filled: true,
-                        fillColor: const Color(0xFF161F33),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        fillColor: inputBg,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: inputBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF0066FF), width: 1.5),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: passController,
                       obscureText: true,
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      style: TextStyle(color: inputTextColor, fontSize: 13.5),
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        labelStyle: const TextStyle(color: Colors.white70),
+                        labelStyle: TextStyle(color: inputLabelColor),
                         filled: true,
-                        fillColor: const Color(0xFF161F33),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        fillColor: inputBg,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: inputBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF0066FF), width: 1.5),
+                        ),
                       ),
                     ),
                   ],
@@ -1031,7 +1203,12 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                   ),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Tutup', style: TextStyle(color: Colors.white60)),
+                  child: Text(
+                    'Tutup',
+                    style: TextStyle(
+                      color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                    ),
+                  ),
                 ),
                 if (!_apiService.isLoggedIn)
                   FilledButton(

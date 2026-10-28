@@ -21,6 +21,24 @@ class ChatMessageItem {
     this.isPending = false,
     this.senderName,
   });
+
+  ChatMessageItem copyWith({
+    String? id,
+    String? content,
+    bool? isMe,
+    String? time,
+    bool? isPending,
+    String? senderName,
+  }) {
+    return ChatMessageItem(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      isMe: isMe ?? this.isMe,
+      time: time ?? this.time,
+      isPending: isPending ?? this.isPending,
+      senderName: senderName ?? this.senderName,
+    );
+  }
 }
 
 /// Service komunikasi dengan server nobox.ai (REST API)
@@ -49,6 +67,7 @@ class NoboxApiService {
 
   final Map<String, String> _channelAccountMap = {};
   final Map<String, ChatConversation> _roomCache = {};
+  final Map<String, DateTime> _locallySentMessageTimes = {};
 
   bool get isLoggedIn => _isLoggedIn && _token != null && _token!.isNotEmpty;
   String? get currentUsername => _currentUsername;
@@ -56,6 +75,84 @@ class NoboxApiService {
   String? get lastError => _lastError;
   String? get tenantId => _tenantId;
   String? get defaultAccountId => _defaultAccountId;
+
+  /// Mencatat pesan yang dikirim oleh perangkat ini agar selalu teridentifikasi sebagai pesan kita (isMe)
+  void recordSentMessage(String content) {
+    final trimmed = content.trim();
+    if (trimmed.isNotEmpty) {
+      _locallySentMessageTimes[trimmed] = DateTime.now();
+      // Bersihkan pesan yang lebih lama dari 15 menit
+      final cutoff = DateTime.now().subtract(const Duration(minutes: 15));
+      _locallySentMessageTimes.removeWhere((_, time) => time.isBefore(cutoff));
+    }
+  }
+
+  /// Memeriksa apakah pesan teks ini baru saja dikirim oleh perangkat lokal
+  bool isRecentlySentLocally(String content) {
+    final trimmed = content.trim();
+    final time = _locallySentMessageTimes[trimmed];
+    if (time == null) return false;
+    return DateTime.now().difference(time).inMinutes < 15;
+  }
+
+  /// Menentukan secara komprehensif apakah pesan dikirim oleh kita (isMe = true / sebelah kanan)
+  /// Mendukung semua format backend Serenity/NoBox (int 1, string '1', bool true, Direction, SdrMsg, dsb.)
+  bool _determineIsMe(Map<String, dynamic> map, String body) {
+    // 1. Periksa atribut eksplisit IsMe / IsMeLast
+    final dynamic isMeVal = map['IsMe'] ?? map['IsMeLast'];
+    if (isMeVal == true || isMeVal == 1 || isMeVal == '1' || isMeVal == 'true') {
+      return true;
+    }
+
+    // 2. Periksa flag Out / IsOut / Outgoing
+    final dynamic outVal =
+        map['Out'] ?? map['IsOut'] ?? map['Outgoing'] ?? map['IsOutgoing'];
+    if (outVal == true || outVal == 1 || outVal == '1' || outVal == 'true') {
+      return true;
+    }
+
+    // 3. Periksa arah Direction / Direct / MsgDirection
+    final dynamic dirVal =
+        map['Direction'] ?? map['Direct'] ?? map['MsgDirection'];
+    if (dirVal == 1 ||
+        dirVal == '1' ||
+        dirVal?.toString().toLowerCase() == 'out' ||
+        dirVal?.toString().toLowerCase() == 'outbound') {
+      return true;
+    }
+
+    // 4. Periksa SenderType (1 = Agent/User, 2 = Customer/Contact)
+    final dynamic sdrType = map['SenderType'] ?? map['SdrType'];
+    if (sdrType == 1 || sdrType == '1') {
+      return true;
+    }
+
+    // 5. Periksa SdrMsg / Sdr
+    final String sdrMsg =
+        (map['SdrMsg'] ?? '').toString().toLowerCase().trim();
+    if (const ['you', 'me', 'agent', 'admin', 'operator', 'self', 'user']
+        .contains(sdrMsg)) {
+      return true;
+    }
+
+    final String sdr = (map['Sdr'] ?? '').toString().toLowerCase().trim();
+    if (const ['you', 'me', 'agent', 'self'].contains(sdr)) {
+      return true;
+    }
+    if (_currentUsername != null &&
+        _currentUsername!.isNotEmpty &&
+        (sdr == _currentUsername!.toLowerCase() ||
+            sdrMsg == _currentUsername!.toLowerCase())) {
+      return true;
+    }
+
+    // 6. Pencocokan dengan cache pesan yang baru dikirim dari perangkat ini
+    if (isRecentlySentLocally(body)) {
+      return true;
+    }
+
+    return false;
+  }
 
   /// Header resmi NoBox SDK
   Map<String, String> _buildHeaders({bool requiresAuth = true}) {
@@ -477,6 +574,13 @@ class NoboxApiService {
           'IsMe',
           'IsMeLast',
           'Out',
+          'IsOut',
+          'Outgoing',
+          'Direction',
+          'Direct',
+          'MsgDirection',
+          'SenderType',
+          'SdrType',
           'In',
           'Up',
           'SenderName',
@@ -512,13 +616,7 @@ class NoboxApiService {
 
           final String msgId = map['Id']?.toString() ?? '';
           final String body = (map['Body'] ?? map['Msg'] ?? '').toString();
-          final String sdr =
-              (map['SdrMsg'] ?? map['Sdr'] ?? '').toString().toLowerCase();
-          final bool isMe = sdr == 'me' ||
-              sdr == 'you' ||
-              map['IsMe'] == true ||
-              map['IsMeLast'] == true ||
-              map['Out'] == true;
+          final bool isMe = _determineIsMe(map, body);
           final String rawTime = (map['In'] ?? map['Up'] ?? '').toString();
 
           return ChatMessageItem(
@@ -758,6 +856,10 @@ class NoboxApiService {
         }
 
         break;
+      }
+
+      if (isSuccess) {
+        recordSentMessage(content);
       }
 
       return isSuccess;

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'chat_inbox_screen.dart';
 import 'loading_screen.dart';
 import 'login_screen.dart';
+import 'services/app_theme_controller.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppThemeController.instance.init();
   runApp(const MyApp());
 }
 
@@ -13,44 +15,62 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NoBox Chat',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090D16),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0066FF),
-          brightness: Brightness.dark,
-          primary: const Color(0xFF0066FF),
-          surface: const Color(0xFF111726),
-        ),
-        useMaterial3: true,
-      ),
-      // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke LoginScreen bergaya Anti AI Slop
-      home: Builder(
-        builder: (context) => LoadingScreen(
-          destination: LoginScreen(
-            destination: ChatInboxScreen(
-              onBackToLoading: () {
-                Navigator.of(context).pushReplacement(
-                  PageRouteBuilder<void>(
-                    transitionDuration: const Duration(milliseconds: 500),
-                    pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
-                      opacity: animation,
-                      child: const LoadingScreen(
-                        destination: LoginScreen(
-                          destination: ChatInboxScreen(),
+    return ListenableBuilder(
+      listenable: AppThemeController.instance,
+      builder: (context, _) {
+        final bool isDark = AppThemeController.instance.isDarkMode;
+
+        return MaterialApp(
+          title: 'NoBox Chat',
+          debugShowCheckedModeBanner: false,
+          themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+          theme: ThemeData(
+            brightness: Brightness.light,
+            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF0066FF),
+              primary: const Color(0xFF0066FF),
+              surface: Colors.white,
+            ),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: const Color(0xFF090D16),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF0066FF),
+              brightness: Brightness.dark,
+              primary: const Color(0xFF0066FF),
+              surface: const Color(0xFF111726),
+            ),
+            useMaterial3: true,
+          ),
+          // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke LoginScreen bergaya Anti AI Slop
+          home: Builder(
+            builder: (context) => LoadingScreen(
+              destination: LoginScreen(
+                destination: ChatInboxScreen(
+                  onBackToLoading: () {
+                    Navigator.of(context).pushReplacement(
+                      PageRouteBuilder<void>(
+                        transitionDuration: const Duration(milliseconds: 500),
+                        pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+                          opacity: animation,
+                          child: const LoadingScreen(
+                            destination: LoginScreen(
+                              destination: ChatInboxScreen(),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
