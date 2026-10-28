@@ -184,32 +184,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
 
     if (success && mounted) {
-      // Pemicu cepat berkala setelah pesan terkirim agar balasan bot/user langsung masuk
-      for (final ms in [300, 800, 1600, 2500]) {
-        Future.delayed(Duration(milliseconds: ms), () {
-          if (mounted) {
-            _syncMessagesSilently();
-          }
-        });
-      }
+      // Sinkronisasi tertata setelah pesan terkirim tanpa membebani batas laju request
+      Future<void>.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          _syncMessagesSilently();
+        }
+      });
     }
 
     if (!success && mounted) {
       final String errText =
           _apiService.lastError ?? 'Gagal mengirim pesan ke nobox.ai';
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(
-          content: Text(
-            errText,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+      // Jangan tampilkan snackbar jika error hanyalah batas laju request sementara
+      if (!errText.toLowerCase().contains('too many requests')) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(
+              errText,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+        );
+      }
     }
   }
 

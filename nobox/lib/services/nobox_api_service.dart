@@ -641,13 +641,27 @@ class NoboxApiService {
       debugPrint('Payload Keys: ${payload.keys.toList()}');
       debugPrint('======================================');
 
-      final http.Response response = await http
+      http.Response response = await http
           .post(
             uri,
             headers: _buildHeaders(),
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 15));
+
+      // Auto-retry jika terkena rate limit server (Too many requests. Please try again after 1 second(s))
+      if (response.statusCode == 429 ||
+          response.body.toLowerCase().contains('too many requests')) {
+        debugPrint('NoboxApiService: Rate limited, waiting 1250ms and retrying automatically...');
+        await Future<void>.delayed(const Duration(milliseconds: 1250));
+        response = await http
+            .post(
+              uri,
+              headers: _buildHeaders(),
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 15));
+      }
 
       debugPrint('=== [FORENSIC: Inbox/Send Response] ===');
       debugPrint('Status Code: ${response.statusCode}');
