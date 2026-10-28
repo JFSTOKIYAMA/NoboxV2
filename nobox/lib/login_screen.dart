@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_inbox_screen.dart';
+import 'services/app_preferences.dart';
 import 'services/nobox_api_service.dart';
 
 /// Halaman Sign In NoBox Chat dengan estetika modern, minimalis, dan presisi
@@ -45,24 +45,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadPreferences() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? savedUsername = prefs.getString('remembered_email') ??
-          prefs.getString('last_username');
-      final bool? savedRemember = prefs.getBool('remember_email');
+    final String? savedUsername = await AppPreferences.getString('remembered_email') ??
+        await AppPreferences.getString('last_username');
+    final bool? savedRemember = await AppPreferences.getBool('remember_email');
 
-      if (mounted) {
-        setState(() {
-          if (savedRemember != null) {
-            _rememberEmail = savedRemember;
-          }
-          if (savedUsername != null && savedUsername.isNotEmpty) {
-            _usernameController.text = savedUsername;
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('LoginScreen: Error loading saved credentials: $e');
+    if (mounted) {
+      setState(() {
+        if (savedRemember != null) {
+          _rememberEmail = savedRemember;
+        }
+        if (savedUsername != null && savedUsername.isNotEmpty) {
+          _usernameController.text = savedUsername;
+        }
+      });
     }
   }
 
@@ -90,21 +85,22 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (_rememberEmail) {
-        await prefs.setString('remembered_email', username);
-        await prefs.setBool('remember_email', true);
-      } else {
-        await prefs.remove('remembered_email');
-        await prefs.setBool('remember_email', false);
-      }
-
+      // 1. Eksekusi login ke backend nobox.ai terlebih dahulu
       final bool success =
           await NoboxApiService().login(username, password);
 
       if (!mounted) return;
 
       if (success) {
+        // 2. Simpan preferensi secara asinkron tanpa memblokir alur navigasi
+        if (_rememberEmail) {
+          await AppPreferences.setString('remembered_email', username);
+          await AppPreferences.setBool('remember_email', true);
+        } else {
+          await AppPreferences.remove('remembered_email');
+          await AppPreferences.setBool('remember_email', false);
+        }
+
         _navigateToDestination();
       } else {
         setState(() {
@@ -117,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Gagal terhubung ke server: $e';
+        _errorMessage = 'Gagal terhubung ke nobox.ai: $e';
       });
     }
   }

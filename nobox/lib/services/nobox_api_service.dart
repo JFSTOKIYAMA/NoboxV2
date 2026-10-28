@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../chat_inbox_screen.dart';
+import 'app_preferences.dart';
 
 /// Model item pesan untuk ruang obrolan NoBox Chat
 class ChatMessageItem {
@@ -74,11 +74,10 @@ class NoboxApiService {
   /// Inisialisasi token & akun dari penyimpanan lokal
   Future<void> init() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _token = prefs.getString(_tokenPrefKey);
-      _currentUsername = prefs.getString(_usernamePrefKey);
-      _tenantId = prefs.getString(_tenantIdPrefKey);
-      _defaultAccountId = prefs.getString(_defaultAccountIdPrefKey);
+      _token = await AppPreferences.getString(_tokenPrefKey);
+      _currentUsername = await AppPreferences.getString(_usernamePrefKey);
+      _tenantId = await AppPreferences.getString(_tenantIdPrefKey);
+      _defaultAccountId = await AppPreferences.getString(_defaultAccountIdPrefKey);
       if (_token != null && _token!.isNotEmpty) {
         _isLoggedIn = true;
         await fetchAccounts();
@@ -126,9 +125,8 @@ class NoboxApiService {
           _isLoggedIn = true;
           _lastError = null;
 
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_tokenPrefKey, _token!);
-          await prefs.setString(_usernamePrefKey, username);
+          await AppPreferences.setString(_tokenPrefKey, _token!);
+          await AppPreferences.setString(_usernamePrefKey, username);
 
           // Ambil daftar akun & tenant ID
           await fetchAccounts();
@@ -157,9 +155,8 @@ class NoboxApiService {
     _lastError = null;
     _defaultAccountId = null;
     _channelAccountMap.clear();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenPrefKey);
-    await prefs.remove(_defaultAccountIdPrefKey);
+    await AppPreferences.remove(_tokenPrefKey);
+    await AppPreferences.remove(_defaultAccountIdPrefKey);
   }
 
   /// Set token secara manual jika didapatkan dari sesi aktif
@@ -168,10 +165,9 @@ class NoboxApiService {
     _currentUsername = username ?? 'Agent';
     _isLoggedIn = true;
     _lastError = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenPrefKey, token);
+    await AppPreferences.setString(_tokenPrefKey, token);
     if (username != null) {
-      await prefs.setString(_usernamePrefKey, username);
+      await AppPreferences.setString(_usernamePrefKey, username);
     }
     await fetchAccounts();
   }
@@ -202,7 +198,6 @@ class NoboxApiService {
         }
 
         if (entities.isNotEmpty) {
-          final prefs = await SharedPreferences.getInstance();
           for (final acc in entities) {
             if (acc is Map) {
               final accId = acc['Id']?.toString();
@@ -213,13 +208,13 @@ class NoboxApiService {
                 _channelAccountMap[chan] = accId;
                 if (_defaultAccountId == null) {
                   _defaultAccountId = accId;
-                  await prefs.setString(_defaultAccountIdPrefKey, accId);
+                  await AppPreferences.setString(_defaultAccountIdPrefKey, accId);
                 }
               }
 
               if (tenant != null && tenant.isNotEmpty) {
                 _tenantId = tenant;
-                await prefs.setString(_tenantIdPrefKey, tenant);
+                await AppPreferences.setString(_tenantIdPrefKey, tenant);
               }
             }
           }
