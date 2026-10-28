@@ -502,19 +502,7 @@ class NoboxApiService {
             '';
       }
 
-      // 2. URL resmi Serenity: https://id.nobox.ai/Inbox/Send?Id={RoomId}
-      final Uri uri = Uri.parse('${baseUrl}Inbox/Send?Id=$targetRoomId');
-
-      // 3. Payload sesuai spesifikasi resmi NoBox.ai
-      final Map<String, dynamic> payload = {
-        'Body': content,
-        'BodyType': 1,
-        'ChannelId': chanId,
-        'AccountIds': effectiveAccountId,
-        'Attachment': '',
-      };
-
-      // Format ExtId: nomor HP internasional tanpa + (misal 6282338765517) atau ID Telegram
+      // 2. Format ExtId: nomor HP internasional tanpa + (misal 6282338765517) atau ID Telegram
       String cleanExt = (extId ?? '').trim().replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanExt.startsWith('08')) {
         cleanExt = '628${cleanExt.substring(2)}';
@@ -525,9 +513,32 @@ class NoboxApiService {
 
       final int? numericLinkId = int.tryParse(targetRoomId);
 
-      // Wajib menyertakan ExtId dan LinkId di semua room agar lolos validasi "Id Link or Id External"
-      payload['ExtId'] = cleanExt.isNotEmpty ? cleanExt : targetRoomId;
-      payload['LinkId'] = numericLinkId ?? targetRoomId;
+      // 3. URL resmi Serenity: menyertakan Id, IdLink, LinkId, IdExternal, ExtId pada query params
+      final Map<String, String> queryParams = {
+        'Id': targetRoomId,
+        'IdLink': targetRoomId,
+        'idLink': targetRoomId,
+        'LinkId': targetRoomId,
+      };
+      if (cleanExt.isNotEmpty) {
+        queryParams['IdExternal'] = cleanExt;
+        queryParams['idExternal'] = cleanExt;
+        queryParams['ExtId'] = cleanExt;
+        queryParams['extId'] = cleanExt;
+      }
+      final Uri uri =
+          Uri.parse('${baseUrl}Inbox/Send').replace(queryParameters: queryParams);
+
+      // 4. Payload sesuai spesifikasi resmi NoBox.ai
+      final Map<String, dynamic> payload = {
+        'Body': content,
+        'BodyType': 1,
+        'ChannelId': chanId,
+        'AccountIds': effectiveAccountId,
+        'Attachment': '',
+        'ExtId': cleanExt.isNotEmpty ? cleanExt : targetRoomId,
+        'LinkId': numericLinkId ?? targetRoomId,
+      };
 
       if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
         final dynamic effectiveGrpId =
