@@ -39,7 +39,6 @@ class _LoadingScreenState extends State<LoadingScreen>
   ];
 
   int _currentStatusIndex = 0;
-  bool _isFinished = false;
 
   @override
   void initState() {
@@ -102,10 +101,7 @@ class _LoadingScreenState extends State<LoadingScreen>
 
     _progressController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        setState(() {
-          _isFinished = true;
-        });
-        Future.delayed(const Duration(milliseconds: 650), () {
+        Future.delayed(const Duration(milliseconds: 400), () {
           if (!mounted) return;
           if (widget.onComplete != null) {
             widget.onComplete!();
@@ -130,15 +126,6 @@ class _LoadingScreenState extends State<LoadingScreen>
         _progressController.forward();
       }
     });
-  }
-
-  void _restartAnimation() {
-    setState(() {
-      _isFinished = false;
-      _currentStatusIndex = 0;
-    });
-    _progressController.reset();
-    _progressController.forward();
   }
 
   @override
@@ -419,44 +406,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                           ),
                         ),
 
-                        const SizedBox(height: 48),
-
-                        // Opsional tombol replay jika sudah selesai
-                        if (_isFinished)
-                          TextButton.icon(
-                            onPressed: _restartAnimation,
-                            icon: const Icon(
-                              Icons.refresh_rounded,
-                              size: 16,
-                              color: brandAccent,
-                            ),
-                            label: const Text(
-                              'Ulangi Animasi',
-                              style: TextStyle(
-                                color: brandAccent,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            style: TextButton.styleFrom(
-                              backgroundColor: brandPrimary.withValues(
-                                alpha: 0.12,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                side: BorderSide(
-                                  color: brandPrimary.withValues(alpha: 0.35),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          const SizedBox(height: 40),
+                        const SizedBox(height: 32),
                       ],
                     );
                   },
