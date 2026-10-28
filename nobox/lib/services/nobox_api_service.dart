@@ -551,7 +551,7 @@ class NoboxApiService {
         'NoboxApiService: Sending message to $uri with payload: ${jsonEncode(payload)}',
       );
 
-      final http.Response response = await http
+      http.Response response = await http
           .post(
             uri,
             headers: _buildHeaders(),
@@ -562,6 +562,51 @@ class NoboxApiService {
       debugPrint(
         'NoboxApiService: sendMessage response code: ${response.statusCode}, body: ${response.body}',
       );
+
+      // Jika server menolak JSON karena mengharapkan parameter Form-URL-Encoded
+      if (response.body.contains('Id Link or Id External')) {
+        debugPrint('NoboxApiService: Retrying with Form-URL-Encoded format...');
+        final Map<String, String> formPayload = {
+          'Id': targetRoomId,
+          'IdLink': targetRoomId,
+          'idLink': targetRoomId,
+          'LinkId': targetRoomId,
+          'linkId': targetRoomId,
+          'IdExternal': cleanExt,
+          'idExternal': cleanExt,
+          'ExtId': cleanExt,
+          'extId': cleanExt,
+          'Body': content,
+          'body': content,
+          'BodyType': '1',
+          'bodyType': '1',
+          'ChannelId': chanId.toString(),
+          'channelId': chanId.toString(),
+          'AccountIds': effectiveAccountId,
+          'accountId': effectiveAccountId,
+          'Attachment': '',
+        };
+        if (isGroup || (groupId != null && groupId.isNotEmpty && groupId != '0')) {
+          final String grpStr = groupId ?? cleanRoomId;
+          formPayload['GroupId'] = grpStr;
+          formPayload['GrpId'] = grpStr;
+        }
+
+        final Map<String, String> formHeaders = Map<String, String>.from(_buildHeaders())
+          ..['Content-Type'] = 'application/x-www-form-urlencoded';
+
+        response = await http
+            .post(
+              uri,
+              headers: formHeaders,
+              body: formPayload,
+            )
+            .timeout(const Duration(seconds: 15));
+
+        debugPrint(
+          'NoboxApiService: Form-URL-Encoded response code: ${response.statusCode}, body: ${response.body}',
+        );
+      }
 
       bool isSuccess = false;
       if (response.statusCode >= 200 && response.statusCode < 300) {
