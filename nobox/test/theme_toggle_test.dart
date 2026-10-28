@@ -19,7 +19,7 @@ void main() {
       expect(controller.isDarkMode, isTrue);
     });
 
-    testWidgets('Tapping theme toggle button in ChatInboxScreen switches theme', (WidgetTester tester) async {
+    testWidgets('Tapping theme toggle in 3-dots menu of ChatInboxScreen switches theme', (WidgetTester tester) async {
       final controller = AppThemeController.instance;
       controller.setDarkMode(true);
 
@@ -31,22 +31,37 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Saat dark mode aktif, icon bulan (dark_mode_rounded) tampil sesuai temanya
-      final darkModeIconFinder = find.byIcon(Icons.dark_mode_rounded);
-      expect(darkModeIconFinder, findsOneWidget);
-
-      // Tap tombol toggle
-      await tester.tap(darkModeIconFinder);
+      // Buka menu titik tiga
+      final moreButtonFinder = find.byIcon(Icons.more_vert_rounded);
+      expect(moreButtonFinder, findsOneWidget);
+      await tester.tap(moreButtonFinder);
       await tester.pumpAndSettle();
 
-      // Setelah di-tap, sekarang mode terang, icon matahari (light_mode_rounded) tampil sesuai temanya
+      // Pastikan opsi 'Mode Terang' dan 'Keluar Akun' ada di menu
+      final lightModeOptionFinder = find.text('Mode Terang');
+      expect(lightModeOptionFinder, findsOneWidget);
+      expect(find.text('Keluar Akun'), findsOneWidget);
+
+      // Tap opsi 'Mode Terang'
+      await tester.tap(lightModeOptionFinder);
+      await tester.pumpAndSettle();
+
+      // Sekarang mode terang aktif
       expect(controller.isDarkMode, isFalse);
-      final lightModeIconFinder = find.byIcon(Icons.light_mode_rounded);
-      expect(lightModeIconFinder, findsOneWidget);
 
-      // Kembalikan ke mode gelap
-      await tester.tap(lightModeIconFinder);
+      // Buka kembali menu titik tiga di mode terang
+      await tester.tap(moreButtonFinder);
       await tester.pumpAndSettle();
+
+      // Pastikan opsi 'Mode Gelap' tampil
+      final darkModeOptionFinder = find.text('Mode Gelap');
+      expect(darkModeOptionFinder, findsOneWidget);
+
+      // Tap opsi 'Mode Gelap'
+      await tester.tap(darkModeOptionFinder);
+      await tester.pumpAndSettle();
+
+      // Kembali ke mode gelap
       expect(controller.isDarkMode, isTrue);
     });
   });

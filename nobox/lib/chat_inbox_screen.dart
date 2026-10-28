@@ -489,20 +489,165 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             _showFilterBottomSheet(context);
           },
         ),
-        // Tombol Gelap / Terang (Icon sesuai tema aktif)
-        IconButton(
-          tooltip: isDark ? 'Mode Gelap aktif (Ketuk untuk Mode Terang)' : 'Mode Terang aktif (Ketuk untuk Mode Gelap)',
+        // Menu Titik Tiga (Pergantian Gelap/Terang & Logout)
+        PopupMenuButton<String>(
+          tooltip: 'Menu lainnya',
           icon: Icon(
-            isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-            color: isDark ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B),
+            Icons.more_vert_rounded,
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
             size: 22,
           ),
-          onPressed: () {
-            AppThemeController.instance.toggleTheme();
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFE2E8F0),
+            ),
+          ),
+          color: isDark ? const Color(0xFF111726) : Colors.white,
+          elevation: 6,
+          onSelected: (value) {
+            if (value == 'theme') {
+              AppThemeController.instance.toggleTheme();
+            } else if (value == 'logout') {
+              _handleLogout();
+            }
           },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'theme',
+              child: Row(
+                children: [
+                  Icon(
+                    isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                    color: isDark ? const Color(0xFFF59E0B) : const Color(0xFF0284C7),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    isDark ? 'Mode Terang' : 'Mode Gelap',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(height: 1),
+            PopupMenuItem<String>(
+              value: 'logout',
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.logout_rounded,
+                    color: Color(0xFFEF4444),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Keluar Akun',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFFEF4444),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );
+  }
+
+  Future<void> _handleLogout() async {
+    final bool isDark = AppThemeController.instance.isDarkMode;
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF111726) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : const Color(0xFFE2E8F0),
+            ),
+          ),
+          title: Row(
+            children: [
+              const Icon(
+                Icons.logout_rounded,
+                color: Color(0xFFEF4444),
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Keluar Akun',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Apakah Anda yakin ingin keluar dari akun nobox.ai?',
+            style: TextStyle(
+              fontSize: 13.5,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.7)
+                  : const Color(0xFF475569),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Keluar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true && mounted) {
+      await _apiService.logout();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder<void>(
+          transitionDuration: const Duration(milliseconds: 400),
+          pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+            opacity: animation,
+            child: LoginScreen(
+              destination: ChatInboxScreen(
+                onBackToLoading: widget.onBackToLoading,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildSearchBar(bool isDark) {
