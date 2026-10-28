@@ -24,7 +24,11 @@ class ChatMessageItem {
 }
 
 /// Service komunikasi dengan server nobox.ai (REST API)
-/// Sesuai spesifikasi resmi NoBox.Ai SDK (X-App-Name, AccountAPI, Services/Chat, Inbox/Send).
+/// Mengimplementasikan protokol resmi NoBox.Ai SDK:
+/// - X-App-Name, User-Agent, X-App-Version
+/// - AccountAPI/GenerateToken
+/// - Services/Chat/Chatrooms/List & Services/Chat/ChatMessages/List
+/// - Inbox/Send dengan payload ExtId, ChannelId, AccountIds, BodyType = 1
 class NoboxApiService {
   static final NoboxApiService _instance = NoboxApiService._internal();
   factory NoboxApiService() => _instance;
@@ -34,18 +38,23 @@ class NoboxApiService {
   static const String _tokenPrefKey = 'auth_token';
   static const String _usernamePrefKey = 'last_username';
   static const String _tenantIdPrefKey = 'tenant_id';
+  static const String _defaultAccountIdPrefKey = 'default_account_id';
 
   String? _token;
   String? _tenantId;
+  String? _defaultAccountId;
   String? _currentUsername;
   String? _lastError;
   bool _isLoggedIn = false;
+
+  final Map<String, String> _channelAccountMap = {};
 
   bool get isLoggedIn => _isLoggedIn && _token != null && _token!.isNotEmpty;
   String? get currentUsername => _currentUsername;
   String? get token => _token;
   String? get lastError => _lastError;
   String? get tenantId => _tenantId;
+  String? get defaultAccountId => _defaultAccountId;
 
   /// Header resmi NoBox SDK
   Map<String, String> _buildHeaders({bool requiresAuth = true}) {
@@ -62,15 +71,17 @@ class NoboxApiService {
     return headers;
   }
 
-  /// Inisialisasi token dari penyimpanan lokal
+  /// Inisialisasi token & akun dari penyimpanan lokal
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _token = prefs.getString(_tokenPrefKey);
       _currentUsername = prefs.getString(_usernamePrefKey);
       _tenantId = prefs.getString(_tenantIdPrefKey);
+      _defaultAccountId = prefs.getString(_defaultAccountIdPrefKey);
       if (_token != null && _token!.isNotEmpty) {
         _isLoggedIn = true;
+        await fetchAccounts();
       }
     } catch (e) {
       debugPrint('NoboxApiService: Error initializing: $e');
@@ -119,7 +130,7 @@ class NoboxApiService {
           await prefs.setString(_tokenPrefKey, _token!);
           await prefs.setString(_usernamePrefKey, username);
 
-          // Ambil tenant dan akun setelah login
+          // Ambil daftar akun & tenant ID
           await fetchAccounts();
           return true;
         } else {
@@ -144,8 +155,11 @@ class NoboxApiService {
     _currentUsername = null;
     _isLoggedIn = false;
     _lastError = null;
+    _defaultAccountId = null;
+    _channelAccountMap.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenPrefKey);
+    await prefs.remove(_defaultAccountIdPrefKey);
   }
 
   /// Set token secara manual jika didapatkan dari sesi aktif
@@ -171,22 +185,47 @@ class NoboxApiService {
           .post(
             uri,
             headers: _buildHeaders(),
-            body: jsonEncode({'IncludeColumns': ['Id', 'Name', 'Channel']}),
+            body: jsonEncode({
+              'IncludeColumns': ['Id', 'Name', 'Channel', 'TenantId'],
+              'ColumnSelection': 1,
+            }),
           )
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final dynamic data = jsonDecode(response.body);
+        List<dynamic> entities = [];
         if (data is Map && data['Entities'] is List) {
-          final List<dynamic> entities = data['Entities'] as List<dynamic>;
-          if (entities.isNotEmpty) {
-            final firstAccount = entities.first;
-            if (firstAccount is Map && firstAccount['TenantId'] != null) {
-              _tenantId = firstAccount['TenantId'].toString();
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString(_tenantIdPrefKey, _tenantId!);
+          entities = data['Entities'] as List<dynamic>;
+        } else if (data is List) {
+          entities = data;
+        }
+
+        if (entities.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          for (final acc in entities) {
+            if (acc is Map) {
+              final accId = acc['Id']?.toString();
+              final chan = acc['Channel']?.toString() ?? '1';
+              final tenant = acc['TenantId']?.toString();
+
+              if (accId != null && accId.isNotEmpty) {
+                _channelAccountMap[chan] = accId;
+                if (_defaultAccountId == null) {
+                  _defaultAccountId = accId;
+                  await prefs.setString(_defaultAccountIdPrefKey, accId);
+                }
+              }
+
+              if (tenant != null && tenant.isNotEmpty) {
+                _tenantId = tenant;
+                await prefs.setString(_tenantIdPrefKey, tenant);
+              }
             }
           }
+          debugPrint(
+            'NoboxApiService: Accounts loaded. DefaultAccountId: $_defaultAccountId, Channels: $_channelAccountMap',
+          );
         }
       }
     } catch (e) {
@@ -297,18 +336,30 @@ class NoboxApiService {
               name.toLowerCase().contains('grup') ||
               name.toLowerCase().contains('group');
 
-          // ExtId (Nomor HP/ID Telegram) & AccountId
-          final String? extId = (map['CtIdExt'] ??
+          // ExtId (Nomor HP/ID Telegram)
+          final String? rawExt = (map['CtIdExt'] ??
                   map['ExtId'] ??
                   map['CtExtId'] ??
+                  map['IdExt'] ??
+                  map['Ct'] ??
+                  map['CtNo'] ??
                   map['Phone'] ??
+                  map['CtPhone'] ??
                   map['CtId'])
               ?.toString();
-          final String? accountId = (map['AccId'] ??
+          final String extId = (rawExt != null && rawExt.isNotEmpty && rawExt != 'null')
+              ? rawExt
+              : name;
+
+          // AccountId
+          final String? rawAcc = (map['AccId'] ??
                   map['AccountId'] ??
                   map['IdAccount'] ??
                   map['AccountIds'])
               ?.toString();
+          final String? accountId = (rawAcc != null && rawAcc.isNotEmpty && rawAcc != 'null' && rawAcc != '0')
+              ? rawAcc
+              : (_channelAccountMap[chId] ?? _defaultAccountId ?? _tenantId);
 
           return ChatConversation(
             id: id,
@@ -333,7 +384,7 @@ class NoboxApiService {
   }
 
   /// 2. Mengambil riwayat pesan di suatu room dari nobox.ai (Services/Chat/ChatMessages/List)
-  Future<List<ChatMessageItem>> getMessages(String roomId) async {
+  Future<List<ChatMessageItem>> getMessages(String roomId, {String? extId}) async {
     if (!isLoggedIn) {
       return [];
     }
@@ -343,11 +394,20 @@ class NoboxApiService {
       final int? numericRoomId =
           int.tryParse(roomId.replaceAll(RegExp(r'[^0-9]'), ''));
 
+      final Map<String, dynamic> equalityFilter = {};
+      if (numericRoomId != null) {
+        equalityFilter['RoomId'] = numericRoomId;
+      } else if (roomId.isNotEmpty && roomId != '0') {
+        equalityFilter['RoomId'] = roomId;
+      } else if (extId != null && extId.isNotEmpty) {
+        equalityFilter['ExtId'] = extId;
+      }
+
       final payload = {
-        'Take': 40,
+        'Take': 50,
         'Skip': 0,
         'Sort': ['In ASC'],
-        'EqualityFilter': {'RoomId': numericRoomId ?? roomId},
+        'EqualityFilter': equalityFilter,
       };
 
       final response = await http
@@ -398,8 +458,10 @@ class NoboxApiService {
     return [];
   }
 
-  /// 3. Mengirim pesan dari NoBox Chat ke nobox.ai (Inbox/Send)
-  /// Menggunakan BodyType integer = 1 (Text) sesuai standar NoBox SDK
+  /// 3. Mengirim pesan dari NoBox Chat langsung ke nobox.ai (Inbox/Send)
+  /// Menggunakan spesifikasi resmi NoBox.Ai SDK:
+  /// - Endpoint: Inbox/Send
+  /// - Parameters: ExtId, ChannelId, AccountIds, BodyType = 1, Body
   Future<bool> sendMessage({
     required String roomId,
     required String content,
@@ -408,28 +470,69 @@ class NoboxApiService {
     String? extId,
   }) async {
     if (!isLoggedIn) {
+      _lastError = 'Belum masuk ke akun nobox.ai.';
       return false;
     }
 
     try {
       final String cleanRoomId = roomId.replaceAll(RegExp(r'[^0-9\-]'), '');
-      final String targetRoomId = cleanRoomId.isNotEmpty ? cleanRoomId : roomId;
-      final Uri uri = Uri.parse('${baseUrl}Inbox/Send?Id=$targetRoomId');
-
       final int chanId = int.tryParse(channelId) ?? 1;
-      final payload = {
-        'Body': content,
-        'BodyType': 1, // Official NoBox SDK BodyType.TEXT as Int
-        'text': content,
-        'bodyType': 1,
+
+      // 1. Tentukan AccountId yang valid
+      String effectiveAccountId = (accountId != null &&
+              accountId.isNotEmpty &&
+              accountId != '0' &&
+              accountId != 'null')
+          ? accountId
+          : (_channelAccountMap[chanId.toString()] ??
+              _defaultAccountId ??
+              _tenantId ??
+              '');
+
+      if (effectiveAccountId.isEmpty) {
+        await fetchAccounts();
+        effectiveAccountId = _channelAccountMap[chanId.toString()] ??
+            _defaultAccountId ??
+            _tenantId ??
+            '';
+      }
+
+      // 2. Tentukan ExtId penerima (Nomor WA / ID Telegram)
+      final String effectiveExtId = (extId != null &&
+              extId.isNotEmpty &&
+              extId != 'null' &&
+              !extId.startsWith('init_'))
+          ? extId
+          : cleanRoomId;
+
+      final Map<String, dynamic> payload = {
+        'ExtId': effectiveExtId,
+        'extId': effectiveExtId,
         'ChannelId': chanId,
         'channelId': chanId,
-        'AccountIds': accountId ?? _tenantId ?? '',
-        'accountId': accountId ?? _tenantId ?? '',
-        'extId': extId ?? '',
-        'Attachment': '',
+        'AccountIds': effectiveAccountId,
+        'accountId': effectiveAccountId,
+        'BodyType': 1, // Official NoBox SDK BodyType.TEXT = 1
+        'bodyType': 1,
+        'Body': content,
+        'body': content,
+        'text': content,
+        'Attachment': null,
       };
 
+      if (cleanRoomId.isNotEmpty) {
+        final numericId = int.tryParse(cleanRoomId);
+        payload['RoomId'] = numericId ?? cleanRoomId;
+        payload['roomId'] = numericId ?? cleanRoomId;
+        payload['Id'] = numericId ?? cleanRoomId;
+      }
+
+      debugPrint(
+        'NoboxApiService: Sending message payload: ${jsonEncode(payload)}',
+      );
+
+      // Coba kirim via endpoint resmi Inbox/Send
+      final Uri uri = Uri.parse('${baseUrl}Inbox/Send');
       final response = await http
           .post(
             uri,
@@ -439,10 +542,66 @@ class NoboxApiService {
           .timeout(const Duration(seconds: 12));
 
       debugPrint(
-        'NoboxApiService: sendMessage status: ${response.statusCode}, body: ${response.body}',
+        'NoboxApiService: sendMessage response code: ${response.statusCode}, body: ${response.body}',
       );
-      return response.statusCode == 200 || response.statusCode == 201;
+
+      bool isSuccess = false;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          final dynamic data = jsonDecode(response.body);
+          if (data is Map) {
+            final dynamic err = data['Error'] ?? data['error'];
+            if (err != null &&
+                err.toString().isNotEmpty &&
+                err.toString() != 'null') {
+              _lastError = err.toString();
+              isSuccess = false;
+            } else if (data['IsError'] == true) {
+              _lastError = data['Message']?.toString() ??
+                  data['InitialText']?.toString() ??
+                  'Gagal mengirim pesan';
+              isSuccess = false;
+            } else {
+              isSuccess = true;
+              _lastError = null;
+            }
+          } else {
+            isSuccess = true;
+            _lastError = null;
+          }
+        } catch (_) {
+          isSuccess = true;
+          _lastError = null;
+        }
+      } else {
+        _lastError = 'HTTP ${response.statusCode}: ${response.body}';
+      }
+
+      // Jika Inbox/Send tanpa parameter belum berhasil dan cleanRoomId ada, coba dengan ?Id=$cleanRoomId
+      if (!isSuccess && cleanRoomId.isNotEmpty) {
+        final Uri fallbackUri =
+            Uri.parse('${baseUrl}Inbox/Send?Id=$cleanRoomId');
+        final fbResponse = await http
+            .post(
+              fallbackUri,
+              headers: _buildHeaders(),
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 10));
+
+        debugPrint(
+          'NoboxApiService: Fallback sendMessage response: ${fbResponse.statusCode}, body: ${fbResponse.body}',
+        );
+
+        if (fbResponse.statusCode >= 200 && fbResponse.statusCode < 300) {
+          isSuccess = true;
+          _lastError = null;
+        }
+      }
+
+      return isSuccess;
     } catch (e) {
+      _lastError = 'Kendala pengiriman: $e';
       debugPrint('NoboxApiService: Error sending message: $e');
       return false;
     }

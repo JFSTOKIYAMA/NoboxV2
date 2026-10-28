@@ -77,8 +77,8 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     super.initState();
     _initAndSync();
 
-    // Auto-sync berkala setiap 8 detik jika terhubung ke server nobox.ai
-    _syncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+    // Auto-sync berkala cepat setiap 2.5 detik jika terhubung ke server nobox.ai
+    _syncTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       if (mounted && _apiService.isLoggedIn && !_isSyncing) {
         _syncFromNoboxAi();
       }
@@ -499,9 +499,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     Color brandPrimary,
   ) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
         // Navigasi langsung ke ruang chat dua arah dengan nobox.ai
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => ChatDetailScreen(
               chat: chat,
@@ -521,6 +521,8 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                       assignedTo: old.assignedTo,
                       status: old.status,
                       isGroup: old.isGroup,
+                      extId: old.extId,
+                      accountId: old.accountId,
                     );
                   }
                 });
@@ -528,6 +530,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             ),
           ),
         );
+        if (mounted && _apiService.isLoggedIn) {
+          await _syncFromNoboxAi();
+        }
       },
       splashColor: brandPrimary.withValues(alpha: 0.08),
       highlightColor: brandPrimary.withValues(alpha: 0.04),

@@ -34,8 +34,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _loadMessages();
 
-    // Polling periodik (setiap 5 detik) untuk sinkronisasi pesan baru dari nobox.ai
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // Polling cepat (setiap 1.5 detik) agar pesan baru langsung masuk tanpa delay
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       if (mounted && !_isSending) {
         _syncMessagesSilently();
       }
@@ -54,7 +54,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     setState(() => _isLoading = true);
 
     // Ambil pesan dari server nobox.ai
-    final remoteMessages = await _apiService.getMessages(widget.chat.id);
+    final remoteMessages = await _apiService.getMessages(
+      widget.chat.id,
+      extId: widget.chat.extId,
+    );
 
     if (!mounted) return;
     setState(() {
@@ -80,7 +83,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _syncMessagesSilently() async {
-    final remoteMessages = await _apiService.getMessages(widget.chat.id);
+    final remoteMessages = await _apiService.getMessages(
+      widget.chat.id,
+      extId: widget.chat.extId,
+    );
     if (!mounted || remoteMessages.isEmpty) return;
 
     final pendingMessages = _messages.where((m) => m.isPending).toList();
@@ -163,21 +169,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
 
     if (success && mounted) {
-      // Segera rekonsiliasi pesan dari server nobox.ai setelah pengiriman berhasil
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) {
-          _syncMessagesSilently();
-        }
-      });
+      // Pemicu cepat berkala setelah pesan terkirim agar balasan bot/user langsung masuk
+      for (final ms in [300, 800, 1600, 2500]) {
+        Future.delayed(Duration(milliseconds: ms), () {
+          if (mounted) {
+            _syncMessagesSilently();
+          }
+        });
+      }
     }
 
     if (!success && mounted) {
+      final String errText =
+          _apiService.lastError ?? 'Gagal mengirim pesan ke nobox.ai';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Mode offline: pesan disimpan secara lokal'),
-          backgroundColor: const Color(0xFFF59E0B),
+          content: Text(errText),
+          backgroundColor: const Color(0xFFEF4444),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
