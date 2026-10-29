@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'chat_inbox_screen.dart';
+import 'login_screen.dart';
+import 'services/nobox_api_service.dart';
 
 /// LoadingScreen bergaya modern, minimalis, dan berkelas tinggi (Anti AI Slop).
 /// Menampilkan logo Nobox dengan efek floating, ambient glow, status dinamis,
@@ -99,6 +102,9 @@ class _LoadingScreenState extends State<LoadingScreen>
       }
     });
 
+    // Sinkronkan sesi akun di background saat animasi berjalan
+    NoboxApiService().init();
+
     _progressController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         Future.delayed(const Duration(milliseconds: 400), () {
@@ -112,6 +118,20 @@ class _LoadingScreenState extends State<LoadingScreen>
                 pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
                   opacity: animation,
                   child: widget.destination!,
+                ),
+              ),
+            );
+          } else {
+            final bool isLoggedIn = NoboxApiService().isLoggedIn;
+            final Widget target = isLoggedIn
+                ? const ChatInboxScreen()
+                : const LoginScreen(destination: ChatInboxScreen());
+            Navigator.of(context).pushReplacement(
+              PageRouteBuilder<void>(
+                transitionDuration: const Duration(milliseconds: 600),
+                pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+                  opacity: animation,
+                  child: target,
                 ),
               ),
             );

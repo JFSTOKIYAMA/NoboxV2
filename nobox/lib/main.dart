@@ -3,10 +3,12 @@ import 'chat_inbox_screen.dart';
 import 'loading_screen.dart';
 import 'login_screen.dart';
 import 'services/app_theme_controller.dart';
+import 'services/nobox_api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppThemeController.instance.init();
+  await NoboxApiService().init();
   runApp(const MyApp());
 }
 
@@ -45,32 +47,59 @@ class MyApp extends StatelessWidget {
             ),
             useMaterial3: true,
           ),
-          // Menjalankan LoadingScreen terlebih dahulu, lalu bertransisi ke LoginScreen bergaya Anti AI Slop
-          home: Builder(
-            builder: (context) => LoadingScreen(
-              destination: LoginScreen(
-                destination: ChatInboxScreen(
-                  onBackToLoading: () {
-                    Navigator.of(context).pushReplacement(
-                      PageRouteBuilder<void>(
-                        transitionDuration: const Duration(milliseconds: 500),
-                        pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
-                          opacity: animation,
-                          child: const LoadingScreen(
-                            destination: LoginScreen(
-                              destination: ChatInboxScreen(),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
+          // LoadingScreen menginisialisasi sesi & langsung masuk ke ChatInboxScreen bila belum logout
+          home: const _AppEntryGate(),
         );
       },
+    );
+  }
+}
+
+/// Gerbang autentikasi & loading aplikasi:
+/// Memeriksa status login nobox.ai secara presisi sehingga user tidak perlu login ulang
+/// selama belum pernah menekan tombol logout.
+class _AppEntryGate extends StatelessWidget {
+  const _AppEntryGate();
+
+  void _routeNext(BuildContext context) {
+    final bool isLoggedIn = NoboxApiService().isLoggedIn;
+    final Widget target = isLoggedIn
+        ? ChatInboxScreen(
+            onBackToLoading: () => _backToLoading(context),
+          )
+        : LoginScreen(
+            destination: ChatInboxScreen(
+              onBackToLoading: () => _backToLoading(context),
+            ),
+          );
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 600),
+        pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+          opacity: animation,
+          child: target,
+        ),
+      ),
+    );
+  }
+
+  static void _backToLoading(BuildContext context) {
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 500),
+        pageBuilder: (_, animation, secondaryAnimation) => FadeTransition(
+          opacity: animation,
+          child: const _AppEntryGate(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LoadingScreen(
+      onComplete: () => _routeNext(context),
     );
   }
 }

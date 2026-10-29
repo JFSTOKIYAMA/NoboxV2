@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -170,18 +171,27 @@ class NoboxApiService {
   }
 
   /// Inisialisasi token & akun dari penyimpanan lokal
-  Future<void> init() async {
+  Future<void> init({bool syncAccounts = true}) async {
     try {
       _token = await AppPreferences.getString(_tokenPrefKey);
       _currentUsername = await AppPreferences.getString(_usernamePrefKey);
       _tenantId = await AppPreferences.getString(_tenantIdPrefKey);
       _defaultAccountId = await AppPreferences.getString(_defaultAccountIdPrefKey);
-      if (_token != null && _token!.isNotEmpty) {
+      if (_token != null && _token!.trim().isNotEmpty) {
         _isLoggedIn = true;
-        await fetchAccounts();
+        if (syncAccounts) {
+          unawaited(
+            fetchAccounts().catchError((dynamic err) {
+              debugPrint('NoboxApiService: background fetchAccounts error: $err');
+            }),
+          );
+        }
+      } else {
+        _isLoggedIn = false;
       }
     } catch (e) {
       debugPrint('NoboxApiService: Error initializing: $e');
+      _isLoggedIn = false;
     }
   }
 
