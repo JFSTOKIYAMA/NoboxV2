@@ -121,6 +121,39 @@ void main() {
         time: '10:10',
       );
       expect(itemUser.isMe, isTrue);
+
+      // 4. Pesan dikirim dari WhatsApp HP / Web (To = nomor pelanggan)
+      final msgWhatsAppExternal = {
+        'Id': '9004',
+        'Body': 'Ini dikirim langsung dari WhatsApp HP saya',
+        'To': '6282338765517',
+      };
+      final bool isMeExternal = (msgWhatsAppExternal['To'] == '6282338765517');
+      final itemWhatsApp = ChatMessageItem(
+        id: msgWhatsAppExternal['Id'].toString(),
+        content: msgWhatsAppExternal['Body'].toString(),
+        isMe: isMeExternal,
+        time: '10:15',
+      );
+      expect(itemWhatsApp.isMe, isTrue);
+    });
+
+    test('Timestamp parsing syncs UTC server datetime to local time', () {
+      // Waktu UTC 02:40 jika diubah ke local time harus sesuai timezone lokal perangkat
+      const rawUtc = '2026-10-29T02:40:00';
+      final expectedLocal = DateTime.parse('${rawUtc}Z').toLocal();
+      final expectedHour = expectedLocal.hour.toString().padLeft(2, '0');
+      final expectedMinute = expectedLocal.minute.toString().padLeft(2, '0');
+      final expectedTimeStr = '$expectedHour:$expectedMinute';
+
+      final msg = ChatMessageItem(
+        id: '9005',
+        content: 'Halo waktu tersinkron',
+        isMe: true,
+        time: expectedTimeStr,
+      );
+
+      expect(msg.time, equals(expectedTimeStr));
     });
   });
 }

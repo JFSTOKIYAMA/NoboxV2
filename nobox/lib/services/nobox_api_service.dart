@@ -69,6 +69,7 @@ class NoboxApiService {
   bool _isLoggedIn = false;
 
   final Map<String, String> _channelAccountMap = {};
+  final Set<String> _channelAccountNames = {};
   final Map<String, ChatConversation> _roomCache = {};
   final Map<String, DateTime> _locallySentMessageTimes = {};
   final Set<String> _sentMessageContents = {};
@@ -273,6 +274,15 @@ class NoboxApiService {
       }
     }
 
+    // Cocokkan dengan nama akun channel bisnis kita (misal: "Official WhatsApp", dsb.)
+    if (_channelAccountNames.isNotEmpty) {
+      if (_channelAccountNames.contains(sdr) ||
+          _channelAccountNames.contains(sdrMsg) ||
+          _channelAccountNames.contains(senderName)) {
+        return true;
+      }
+    }
+
     // Periksa apakah pengirim adalah pelanggan (lawan bicara)
     final String cleanCustomerExt =
         (customerExtId ?? '').replaceAll(RegExp(r'[^0-9]'), '').trim();
@@ -286,11 +296,48 @@ class NoboxApiService {
         .replaceAll(RegExp(r'[^0-9]'), '')
         .trim();
 
-    // Jika pengirim cocok dengan nomor HP atau nama pelanggan -> PASTI PELANGGAN (isMe = false)
+    // 8. Periksa arah pengiriman berdasarkan field To / From
+    // Jika pesan ditujukan ke pelanggan (To = customerExt), pasti KITA yang mengirim dari WhatsApp/Telegram/Web
+    final dynamic toVal =
+        map['To'] ?? map['Recipient'] ?? map['Receiver'] ?? map['Destination'];
+    if (toVal != null) {
+      final String toDigits =
+          toVal.toString().replaceAll(RegExp(r'[^0-9]'), '').trim();
+      if (toDigits.isNotEmpty && cleanCustomerExt.isNotEmpty) {
+        if (toDigits.endsWith(cleanCustomerExt) ||
+            cleanCustomerExt.endsWith(toDigits)) {
+          return true;
+        }
+      }
+    }
+
+    // Jika pesan berasal dari pelanggan (From = customerExt), pasti pelanggan yang mengirim
+    final dynamic fromVal = map['From'];
+    if (fromVal != null) {
+      final String fromDigits =
+          fromVal.toString().replaceAll(RegExp(r'[^0-9]'), '').trim();
+      if (fromDigits.isNotEmpty && cleanCustomerExt.isNotEmpty) {
+        if (fromDigits.endsWith(cleanCustomerExt) ||
+            cleanCustomerExt.endsWith(fromDigits)) {
+          return false;
+        }
+      }
+    }
+
+    // 9. Jika pengirim cocok dengan nomor HP atau nama pelanggan -> PASTI PELANGGAN (isMe = false)
     if (cleanCustomerExt.isNotEmpty) {
-      if (sdr.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
-          sdrMsg.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
-          senderName.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
+      final String sdrDigits = sdr.replaceAll(RegExp(r'[^0-9]'), '');
+      final String sdrMsgDigits = sdrMsg.replaceAll(RegExp(r'[^0-9]'), '');
+      final String senderNameDigits = senderName.replaceAll(RegExp(r'[^0-9]'), '');
+      if ((sdrDigits.isNotEmpty &&
+              (cleanCustomerExt.endsWith(sdrDigits) ||
+                  sdrDigits.endsWith(cleanCustomerExt))) ||
+          (sdrMsgDigits.isNotEmpty &&
+              (cleanCustomerExt.endsWith(sdrMsgDigits) ||
+                  sdrMsgDigits.endsWith(cleanCustomerExt))) ||
+          (senderNameDigits.isNotEmpty &&
+              (cleanCustomerExt.endsWith(senderNameDigits) ||
+                  senderNameDigits.endsWith(cleanCustomerExt))) ||
           ctExtVal == cleanCustomerExt) {
         return false;
       }
@@ -307,7 +354,32 @@ class NoboxApiService {
       }
     }
 
-    // 8. Evaluasi fallback: jika Direction == 1 atau SdrType == 1
+    // 10. Pada percakapan 1-on-1 (WhatsApp/Telegram):
+    // Jika ada identitas pengirim (sdr/senderName/usrNm) dan terbukti BUKAN pelanggan,
+    // maka pesan tersebut dikirim oleh pihak kita (agen/bot/WhatsApp dari perangkat lain)
+    final String activeSender = sdr.isNotEmpty
+        ? sdr
+        : (senderName.isNotEmpty ? senderName : sdrMsg);
+    if (activeSender.isNotEmpty &&
+        activeSender != 'null' &&
+        activeSender != '0') {
+      final String activeDigits =
+          activeSender.replaceAll(RegExp(r'[^0-9]'), '');
+      final bool matchesCustomerPhone = cleanCustomerExt.isNotEmpty &&
+          activeDigits.isNotEmpty &&
+          (cleanCustomerExt.endsWith(activeDigits) ||
+              activeDigits.endsWith(cleanCustomerExt));
+      final bool matchesCustomerName = cleanCustomerName.isNotEmpty &&
+          cleanCustomerName != 'tanpa nama' &&
+          (activeSender == cleanCustomerName ||
+              cleanCustomerName.contains(activeSender));
+
+      if (!matchesCustomerPhone && !matchesCustomerName) {
+        return true;
+      }
+    }
+
+    // 11. Evaluasi fallback: jika Direction == 1 atau SdrType == 1 dengan username
     if (dirVal == 1 || dirVal == '1') {
       if (sdrType == 1 || sdrType == '1' || usrNm.isNotEmpty) {
         return true;
@@ -487,8 +559,13 @@ class NoboxApiService {
           for (final acc in entities) {
             if (acc is Map) {
               final accId = acc['Id']?.toString();
+              final accName = acc['Name']?.toString();
               final chan = acc['Channel']?.toString() ?? '1';
               final tenant = acc['TenantId']?.toString();
+
+              if (accName != null && accName.isNotEmpty) {
+                _channelAccountNames.add(accName.toLowerCase().trim());
+              }
 
               if (accId != null && accId.isNotEmpty) {
                 _channelAccountMap[chan] = accId;
@@ -536,6 +613,9 @@ class NoboxApiService {
           'SdrMsg',
           'Up',
           'In',
+          'TimeMsg',
+          'MsgTime',
+          'SessTime',
           'St',
           'ChId',
           'ChAcc',
@@ -615,9 +695,13 @@ class NoboxApiService {
             lastMsg = 'Percakapan kosong';
           }
 
-          // Format waktu
-          final String rawTime = (map['Up'] ?? map['In'] ?? '').toString();
-          final String time = _formatTimestamp(rawTime);
+          // Format waktu (prioritaskan waktu aktual pesan TimeMsg/MsgTime/Up/In)
+          final dynamic rawTimeVal = map['TimeMsg'] ??
+              map['MsgTime'] ??
+              map['Up'] ??
+              map['In'] ??
+              map['SessTime'];
+          final String time = _formatTimestamp(rawTimeVal);
 
           // Channel (Telegram / WhatsApp)
           final String chNm = (map['ChNm'] ?? map['Channel'] ?? '').toString();
@@ -798,6 +882,15 @@ class NoboxApiService {
           'MsgType',
           'St',
           'Status',
+          'To',
+          'From',
+          'Recipient',
+          'Receiver',
+          'Destination',
+          'TimeMsg',
+          'MsgTime',
+          'Time',
+          'Timestamp',
         ],
         'EqualityFilter': equalityFilter,
       };
@@ -836,13 +929,19 @@ class NoboxApiService {
             customerName: customerName,
             assignedTo: assignedTo,
           );
-          final String rawTime = (map['In'] ?? map['Up'] ?? '').toString();
+          // Prioritaskan waktu pengiriman pesan aktual (TimeMsg / MsgTime / Time / In / Up)
+          final dynamic rawTimeVal = map['TimeMsg'] ??
+              map['MsgTime'] ??
+              map['Time'] ??
+              map['In'] ??
+              map['Up'] ??
+              map['Timestamp'];
 
           return ChatMessageItem(
             id: msgId,
             content: body,
             isMe: isMe,
-            time: _formatTimeOnly(rawTime),
+            time: _formatTimeOnly(rawTimeVal),
             senderName: map['SenderName']?.toString() ?? map['Ct']?.toString(),
           );
         }).whereType<ChatMessageItem>().toList();
@@ -1089,33 +1188,77 @@ class NoboxApiService {
     }
   }
 
-  String _formatTimestamp(String raw) {
-    if (raw.isEmpty) return 'Baru saja';
-    try {
-      final dt = DateTime.parse(raw).toLocal();
-      final now = DateTime.now();
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
+  /// Mengurai waktu dari berbagai format server NoBox / Serenity:
+  /// - ISO 8601 string dengan timezone (e.g. 2026-10-29T02:40:00Z, 2026-10-29T09:40:00+07:00)
+  /// - SQL Datetime UTC tanpa offset (e.g. "2026-10-29T02:40:00" atau "2026-10-29 02:40:00")
+  /// - Unix epoch timestamp numerik (milidetik atau detik)
+  DateTime? _parseDateTime(dynamic raw) {
+    if (raw == null) return null;
+    final String str = raw.toString().trim();
+    if (str.isEmpty || str == 'null') return null;
 
-      if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-        return '$hour:$minute';
+    // 1. Unix timestamp numerik (epoch)
+    final num? numeric = num.tryParse(str);
+    if (numeric != null && numeric > 1000000000) {
+      if (numeric > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(numeric.toInt()).toLocal();
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch((numeric * 1000).toInt()).toLocal();
       }
-      return '${dt.day} ${_monthName(dt.month)}, $hour:$minute';
+    }
+
+    // 2. Normalisasi format SQL Datetime (ganti spasi dengan 'T')
+    String clean = str.replaceFirst(' ', 'T');
+
+    // Jika string tidak memiliki penanda timezone ('Z' atau offset '+/-HH:mm'),
+    // Serenity menyimpan nilai UTC murni di database SQL,
+    // maka kita tandai dengan 'Z' agar DateTime.parse() mengonversinya ke waktu lokal perangkat secara presisi.
+    if (!clean.endsWith('Z') && !RegExp(r'[+-]\d\d:?\d\d$').hasMatch(clean)) {
+      clean = '${clean}Z';
+    }
+
+    try {
+      return DateTime.parse(clean).toLocal();
     } catch (_) {
-      return raw;
+      try {
+        return DateTime.parse(str).toLocal();
+      } catch (_) {
+        return null;
+      }
     }
   }
 
-  String _formatTimeOnly(String raw) {
-    if (raw.isEmpty) return '';
-    try {
-      final dt = DateTime.parse(raw).toLocal();
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    } catch (_) {
-      return raw;
+  String _formatTimestamp(dynamic raw) {
+    if (raw == null) return 'Baru saja';
+    final dt = _parseDateTime(raw);
+    if (dt == null) {
+      final str = raw.toString().trim();
+      return str.isNotEmpty && str != 'null' ? str : 'Baru saja';
     }
+
+    final now = DateTime.now();
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+      return '$hour:$minute';
+    }
+    return '${dt.day} ${_monthName(dt.month)}, $hour:$minute';
+  }
+
+  String _formatTimeOnly(dynamic raw) {
+    if (raw == null) return '';
+    final dt = _parseDateTime(raw);
+    if (dt == null) {
+      final str = raw.toString().trim();
+      final timeMatch = RegExp(r'\b(\d{1,2}:\d{2})\b').firstMatch(str);
+      if (timeMatch != null) return timeMatch.group(1)!;
+      return str != 'null' ? str : '';
+    }
+
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   String _monthName(int month) {

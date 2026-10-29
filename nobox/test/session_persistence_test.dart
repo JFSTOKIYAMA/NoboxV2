@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nobox/chat_inbox_screen.dart';
 import 'package:nobox/login_screen.dart';
@@ -33,6 +34,9 @@ void main() {
       // 5. Pastikan aplikasi langsung masuk ke ChatInboxScreen tanpa meminta login
       expect(find.byType(ChatInboxScreen), findsOneWidget);
       expect(find.byType(LoginScreen), findsNothing);
+
+      // Bersihkan widget tree agar timer periodik ditutup rapi
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('App opens LoginScreen when user has logged out',
@@ -51,6 +55,9 @@ void main() {
       // 4. Pastikan aplikasi masuk ke LoginScreen karena belum/sudah logout
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byType(ChatInboxScreen), findsNothing);
+
+      // Bersihkan widget tree
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }
