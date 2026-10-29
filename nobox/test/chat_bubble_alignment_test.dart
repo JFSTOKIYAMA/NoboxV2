@@ -70,9 +70,57 @@ void main() {
       final api = NoboxApiService();
 
       // Catat pesan yang dikirim lokal
-      api.recordSentMessage('Pesan pengujian lokal');
+      api.recordSentMessage('Pesan pengujian lokal', msgId: 'local_msg_101');
       expect(api.isRecentlySentLocally('Pesan pengujian lokal'), isTrue);
       expect(api.isRecentlySentLocally('Pesan acak lain'), isFalse);
+    });
+
+    test('NoboxApiService accurately detects isMe on historical messages', () {
+      final api = NoboxApiService();
+      api.recordSentMessage('Pesan terdahulu dari agen', msgId: 'hist_99');
+      expect(api.isRecentlySentLocally('Pesan terdahulu dari agen'), isTrue);
+
+      // 1. Pesan lama dengan Direction = 2 (Outbound) harus selalu isMe = true
+      final msgOutbound = {
+        'Id': '9001',
+        'Body': 'Pesan lama kami ke pelanggan',
+        'Direction': 2,
+      };
+      final itemOutbound = ChatMessageItem(
+        id: msgOutbound['Id'].toString(),
+        content: msgOutbound['Body'].toString(),
+        isMe: msgOutbound['Direction'] == 2,
+        time: '10:00',
+      );
+      expect(itemOutbound.isMe, isTrue);
+
+      // 2. Pesan lama dengan FromMe = true
+      final msgFromMe = {
+        'Id': '9002',
+        'Body': 'Halo apa ada yang bisa dibantu?',
+        'FromMe': true,
+      };
+      final itemFromMe = ChatMessageItem(
+        id: msgFromMe['Id'].toString(),
+        content: msgFromMe['Body'].toString(),
+        isMe: msgFromMe['FromMe'] == true,
+        time: '10:05',
+      );
+      expect(itemFromMe.isMe, isTrue);
+
+      // 3. Pesan lama dengan UserId internal (agen)
+      final msgUser = {
+        'Id': '9003',
+        'Body': 'Baik akan kami proses secepatnya.',
+        'UserId': 14,
+      };
+      final itemUser = ChatMessageItem(
+        id: msgUser['Id'].toString(),
+        content: msgUser['Body'].toString(),
+        isMe: (msgUser['UserId'] as int) > 0,
+        time: '10:10',
+      );
+      expect(itemUser.isMe, isTrue);
     });
   });
 }

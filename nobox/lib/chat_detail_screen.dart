@@ -97,7 +97,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       for (int i = 0; i < result.length; i++) {
         if (matchedRemoteIndices.contains(i)) continue;
         final rem = result[i];
-        if (rem.isMe && rem.content.trim() == loc.content.trim()) {
+        if (rem.content.trim() == loc.content.trim()) {
           matchedIndex = i;
           break;
         }
@@ -106,6 +106,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (matchedIndex != -1) {
         matchedRemoteIndices.add(matchedIndex);
         // Pesan lokal ini telah resmi ada di server!
+        // Pastikan item server memiliki isMe = true dan isPending = false
+        final rem = result[matchedIndex];
+        result[matchedIndex] = rem.copyWith(isMe: true, isPending: false);
+        _apiService.recordSentMessage(rem.content, msgId: rem.id);
       } else {
         // Belum ada di server, pertahankan pesan lokal ini agar tidak terhapus
         remainingLocals.add(loc);
@@ -127,10 +131,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _loadMessages() async {
     setState(() => _isLoading = true);
 
-    // Ambil pesan dari server nobox.ai
+    // Ambil pesan dari server nobox.ai dengan konteks nama pelanggan & agen
     final remoteMessages = await _apiService.getMessages(
       widget.chat.id,
       extId: widget.chat.extId,
+      customerName: widget.chat.name,
+      assignedTo: widget.chat.assignedTo,
     );
 
     if (!mounted) return;
@@ -162,6 +168,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final remoteMessages = await _apiService.getMessages(
       widget.chat.id,
       extId: widget.chat.extId,
+      customerName: widget.chat.name,
+      assignedTo: widget.chat.assignedTo,
     );
     if (!mounted) return;
 

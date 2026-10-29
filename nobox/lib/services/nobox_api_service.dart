@@ -59,6 +59,8 @@ class NoboxApiService {
   static const String _tenantIdPrefKey = 'tenant_id';
   static const String _defaultAccountIdPrefKey = 'default_account_id';
 
+  static const String _sentMessagesPrefKey = 'locally_sent_messages_cache';
+
   String? _token;
   String? _tenantId;
   String? _defaultAccountId;
@@ -69,6 +71,8 @@ class NoboxApiService {
   final Map<String, String> _channelAccountMap = {};
   final Map<String, ChatConversation> _roomCache = {};
   final Map<String, DateTime> _locallySentMessageTimes = {};
+  final Set<String> _sentMessageContents = {};
+  final Set<String> _sentMessageIds = {};
 
   bool get isLoggedIn => _isLoggedIn && _token != null && _token!.isNotEmpty;
   String? get currentUsername => _currentUsername;
@@ -78,78 +82,236 @@ class NoboxApiService {
   String? get defaultAccountId => _defaultAccountId;
 
   /// Mencatat pesan yang dikirim oleh perangkat ini agar selalu teridentifikasi sebagai pesan kita (isMe)
-  void recordSentMessage(String content) {
+  /// Disimpan secara permanen dalam memori & preferensi lokal sehingga pesan lama tidak akan berpindah ke kiri.
+  void recordSentMessage(String content, {String? msgId}) {
     final trimmed = content.trim();
     if (trimmed.isNotEmpty) {
       _locallySentMessageTimes[trimmed] = DateTime.now();
-      // Bersihkan pesan yang lebih lama dari 15 menit
-      final cutoff = DateTime.now().subtract(const Duration(minutes: 15));
-      _locallySentMessageTimes.removeWhere((_, time) => time.isBefore(cutoff));
+      _sentMessageContents.add(trimmed);
+      if (msgId != null && msgId.isNotEmpty) {
+        _sentMessageIds.add(msgId);
+      }
+      unawaited(_persistSentMessages());
     }
   }
 
-  /// Memeriksa apakah pesan teks ini baru saja dikirim oleh perangkat lokal
+  Future<void> _persistSentMessages() async {
+    try {
+      final list = _sentMessageContents.take(600).toList();
+      await AppPreferences.setString(_sentMessagesPrefKey, jsonEncode(list));
+    } catch (_) {}
+  }
+
+  /// Memeriksa apakah pesan teks ini dikirim oleh perangkat lokal kita
   bool isRecentlySentLocally(String content) {
     final trimmed = content.trim();
+    if (_sentMessageContents.contains(trimmed)) return true;
     final time = _locallySentMessageTimes[trimmed];
-    if (time == null) return false;
-    return DateTime.now().difference(time).inMinutes < 15;
+    if (time != null) return true;
+    return false;
   }
 
   /// Menentukan secara komprehensif apakah pesan dikirim oleh kita (isMe = true / sebelah kanan)
-  /// Mendukung semua format backend Serenity/NoBox (int 1, string '1', bool true, Direction, SdrMsg, dsb.)
-  bool _determineIsMe(Map<String, dynamic> map, String body) {
+  /// Mendukung semua format backend Serenity/NoBox (int 1/2, string '1'/'2', Direction, SdrMsg, FromMe, dsb.)
+  bool _determineIsMe(
+    Map<String, dynamic> map,
+    String body, {
+    String? customerExtId,
+    String? customerName,
+    String? assignedTo,
+  }) {
+    // 0. Pencocokan langsung dengan riwayat pesan yang pernah dikirim dari aplikasi kita
+    final String msgId = (map['Id'] ?? map['MessageId'] ?? '').toString();
+    if (msgId.isNotEmpty && _sentMessageIds.contains(msgId)) {
+      return true;
+    }
+    if (body.trim().isNotEmpty && isRecentlySentLocally(body)) {
+      return true;
+    }
+
     // 1. Periksa atribut eksplisit IsMe / IsMeLast
     final dynamic isMeVal = map['IsMe'] ?? map['IsMeLast'];
     if (isMeVal == true || isMeVal == 1 || isMeVal == '1' || isMeVal == 'true') {
       return true;
     }
 
-    // 2. Periksa flag Out / IsOut / Outgoing
+    // 2. Periksa flag FromMe / IsFromMe (Standar resmi Serenity / WhatsApp Web / Baileys)
+    final dynamic fromMeVal = map['FromMe'] ??
+        map['IsFromMe'] ??
+        map['fromMe'] ??
+        map['isFromMe'] ??
+        map['from_me'] ??
+        map['is_from_me'];
+    if (fromMeVal == true ||
+        fromMeVal == 1 ||
+        fromMeVal == '1' ||
+        fromMeVal == 'true') {
+      return true;
+    }
+
+    // 3. Periksa flag Out / IsOut / Outgoing / IsOutgoing
     final dynamic outVal =
         map['Out'] ?? map['IsOut'] ?? map['Outgoing'] ?? map['IsOutgoing'];
     if (outVal == true || outVal == 1 || outVal == '1' || outVal == 'true') {
       return true;
     }
 
-    // 3. Periksa arah Direction / Direct / MsgDirection
+    // 4. Periksa arah Direction / Direct / MsgDirection
+    // Pada sistem Omnichannel/CRM Serenity: 
+    // 2 = Outbound (keluar dari kita), 1 = Inbound (masuk dari pelanggan)
     final dynamic dirVal =
         map['Direction'] ?? map['Direct'] ?? map['MsgDirection'];
-    if (dirVal == 1 ||
-        dirVal == '1' ||
-        dirVal?.toString().toLowerCase() == 'out' ||
-        dirVal?.toString().toLowerCase() == 'outbound') {
-      return true;
+    if (dirVal != null) {
+      final String dirStr = dirVal.toString().toLowerCase().trim();
+      if (dirStr == 'out' ||
+          dirStr == 'outbound' ||
+          dirStr == 'outgoing' ||
+          dirStr == 'send' ||
+          dirStr == 'sent' ||
+          dirStr == 'keluar' ||
+          dirVal == 2 ||
+          dirStr == '2') {
+        return true;
+      }
+      if (dirStr == 'in' ||
+          dirStr == 'inbound' ||
+          dirStr == 'incoming' ||
+          dirStr == 'masuk' ||
+          dirStr == 'receive' ||
+          dirStr == 'received') {
+        return false;
+      }
     }
 
-    // 4. Periksa SenderType (1 = Agent/User, 2 = Customer/Contact)
+    // 5. Periksa SenderType / SdrType
     final dynamic sdrType = map['SenderType'] ?? map['SdrType'];
-    if (sdrType == 1 || sdrType == '1') {
+    if (sdrType != null) {
+      final String stStr = sdrType.toString().toLowerCase().trim();
+      if (stStr == 'agent' ||
+          stStr == 'user' ||
+          stStr == 'admin' ||
+          stStr == 'operator' ||
+          stStr == 'system' ||
+          stStr == 'me' ||
+          stStr == 'self' ||
+          sdrType == 2 ||
+          stStr == '2') {
+        return true;
+      }
+      if (stStr == 'customer' ||
+          stStr == 'contact' ||
+          stStr == 'client' ||
+          stStr == 'external') {
+        return false;
+      }
+    }
+
+    // 6. Periksa UserId / UsrId internal (di Serenity, hanya agen internal yang memiliki UsrId/UserId)
+    final dynamic usrId = map['UsrId'] ?? map['UserId'];
+    if (usrId != null &&
+        usrId.toString().isNotEmpty &&
+        usrId.toString() != '0' &&
+        usrId.toString() != 'null') {
       return true;
     }
 
-    // 5. Periksa SdrMsg / Sdr
-    final String sdrMsg =
-        (map['SdrMsg'] ?? '').toString().toLowerCase().trim();
-    if (const ['you', 'me', 'agent', 'admin', 'operator', 'self', 'user']
-        .contains(sdrMsg)) {
-      return true;
-    }
-
+    // 7. Periksa Nama Pengirim vs Akun Agen & Pelanggan
+    final String sdrMsg = (map['SdrMsg'] ?? '').toString().toLowerCase().trim();
     final String sdr = (map['Sdr'] ?? '').toString().toLowerCase().trim();
-    if (const ['you', 'me', 'agent', 'self'].contains(sdr)) {
-      return true;
-    }
-    if (_currentUsername != null &&
-        _currentUsername!.isNotEmpty &&
-        (sdr == _currentUsername!.toLowerCase() ||
-            sdrMsg == _currentUsername!.toLowerCase())) {
+    final String senderName =
+        (map['SenderName'] ?? '').toString().toLowerCase().trim();
+    final String usrNm =
+        (map['UsrNm'] ?? map['UserName'] ?? '').toString().toLowerCase().trim();
+
+    // Kata kunci universal pesan agen/kita
+    const agentKeywords = [
+      'you',
+      'me',
+      'agent',
+      'admin',
+      'operator',
+      'self',
+      'user',
+      'kami',
+      'saya',
+    ];
+    if (agentKeywords.contains(sdrMsg) ||
+        agentKeywords.contains(sdr) ||
+        agentKeywords.contains(senderName) ||
+        agentKeywords.contains(usrNm)) {
       return true;
     }
 
-    // 6. Pencocokan dengan cache pesan yang baru dikirim dari perangkat ini
-    if (isRecentlySentLocally(body)) {
-      return true;
+    // Cocokkan dengan username akun login kita
+    if (_currentUsername != null && _currentUsername!.isNotEmpty) {
+      final String myUserLower = _currentUsername!.toLowerCase().trim();
+      final String myUserPrefix = myUserLower.split('@').first;
+      if (sdr == myUserLower ||
+          sdrMsg == myUserLower ||
+          senderName == myUserLower ||
+          usrNm == myUserLower ||
+          sdr == myUserPrefix ||
+          sdrMsg == myUserPrefix ||
+          senderName == myUserPrefix ||
+          usrNm == myUserPrefix) {
+        return true;
+      }
+    }
+
+    // Cocokkan dengan nama agen yang ditugaskan (assignedTo)
+    if (assignedTo != null && assignedTo.isNotEmpty) {
+      final String assignedLower = assignedTo.toLowerCase().trim();
+      if (assignedLower != 'unassigned' &&
+          assignedLower != 'belum ditugaskan' &&
+          assignedLower != 'tanpa nama') {
+        if (sdr == assignedLower ||
+            sdrMsg == assignedLower ||
+            senderName == assignedLower ||
+            usrNm == assignedLower) {
+          return true;
+        }
+      }
+    }
+
+    // Periksa apakah pengirim adalah pelanggan (lawan bicara)
+    final String cleanCustomerExt =
+        (customerExtId ?? '').replaceAll(RegExp(r'[^0-9]'), '').trim();
+    final String cleanCustomerName = (customerName ?? '').toLowerCase().trim();
+    final String ctVal = (map['Ct'] ?? map['CtNm'] ?? map['CtRealNm'] ?? '')
+        .toString()
+        .toLowerCase()
+        .trim();
+    final String ctExtVal = (map['CtIdExt'] ?? map['ExtId'] ?? map['Phone'] ?? '')
+        .toString()
+        .replaceAll(RegExp(r'[^0-9]'), '')
+        .trim();
+
+    // Jika pengirim cocok dengan nomor HP atau nama pelanggan -> PASTI PELANGGAN (isMe = false)
+    if (cleanCustomerExt.isNotEmpty) {
+      if (sdr.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
+          sdrMsg.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
+          senderName.replaceAll(RegExp(r'[^0-9]'), '') == cleanCustomerExt ||
+          ctExtVal == cleanCustomerExt) {
+        return false;
+      }
+    }
+
+    if (cleanCustomerName.isNotEmpty &&
+        cleanCustomerName != 'tanpa nama' &&
+        cleanCustomerName != 'unknown') {
+      if (sdr == cleanCustomerName ||
+          sdrMsg == cleanCustomerName ||
+          senderName == cleanCustomerName ||
+          ctVal == cleanCustomerName) {
+        return false;
+      }
+    }
+
+    // 8. Evaluasi fallback: jika Direction == 1 atau SdrType == 1
+    if (dirVal == 1 || dirVal == '1') {
+      if (sdrType == 1 || sdrType == '1' || usrNm.isNotEmpty) {
+        return true;
+      }
     }
 
     return false;
@@ -177,6 +339,21 @@ class NoboxApiService {
       _currentUsername = await AppPreferences.getString(_usernamePrefKey);
       _tenantId = await AppPreferences.getString(_tenantIdPrefKey);
       _defaultAccountId = await AppPreferences.getString(_defaultAccountIdPrefKey);
+      final String? cachedSent =
+          await AppPreferences.getString(_sentMessagesPrefKey);
+      if (cachedSent != null && cachedSent.isNotEmpty) {
+        try {
+          final dynamic list = jsonDecode(cachedSent);
+          if (list is List) {
+            for (final item in list) {
+              if (item != null) {
+                _sentMessageContents.add(item.toString().trim());
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       if (_token != null && _token!.trim().isNotEmpty) {
         _isLoggedIn = true;
         if (syncAccounts) {
@@ -550,7 +727,12 @@ class NoboxApiService {
   }
 
   /// 2. Mengambil riwayat pesan di suatu room dari nobox.ai (Services/Chat/ChatMessages/List)
-  Future<List<ChatMessageItem>> getMessages(String roomId, {String? extId}) async {
+  Future<List<ChatMessageItem>> getMessages(
+    String roomId, {
+    String? extId,
+    String? customerName,
+    String? assignedTo,
+  }) async {
     if (!isLoggedIn) {
       return [];
     }
@@ -573,7 +755,7 @@ class NoboxApiService {
         'Take': 50,
         'Skip': 0,
         'Sort': ['In DESC'],
-        'ColumnSelection': 2,
+        'ColumnSelection': 1,
         'IncludeColumns': [
           'Id',
           'RoomId',
@@ -581,20 +763,41 @@ class NoboxApiService {
           'Msg',
           'SdrMsg',
           'Sdr',
+          'SdrType',
+          'SenderType',
+          'SenderName',
           'IsMe',
           'IsMeLast',
+          'FromMe',
+          'IsFromMe',
+          'fromMe',
+          'isFromMe',
           'Out',
           'IsOut',
           'Outgoing',
+          'IsOutgoing',
           'Direction',
           'Direct',
           'MsgDirection',
-          'SenderType',
-          'SdrType',
           'In',
           'Up',
-          'SenderName',
           'Ct',
+          'CtNm',
+          'CtRealNm',
+          'CtIdExt',
+          'ExtId',
+          'Phone',
+          'UsrNm',
+          'UserName',
+          'UsrId',
+          'UserId',
+          'AccountId',
+          'ChAccId',
+          'ChAcc',
+          'Type',
+          'MsgType',
+          'St',
+          'Status',
         ],
         'EqualityFilter': equalityFilter,
       };
@@ -626,7 +829,13 @@ class NoboxApiService {
 
           final String msgId = map['Id']?.toString() ?? '';
           final String body = (map['Body'] ?? map['Msg'] ?? '').toString();
-          final bool isMe = _determineIsMe(map, body);
+          final bool isMe = _determineIsMe(
+            map,
+            body,
+            customerExtId: extId,
+            customerName: customerName,
+            assignedTo: assignedTo,
+          );
           final String rawTime = (map['In'] ?? map['Up'] ?? '').toString();
 
           return ChatMessageItem(

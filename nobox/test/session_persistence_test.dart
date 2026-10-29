@@ -28,7 +28,7 @@ void main() {
 
       // 4. Selesaikan durasi loading screen (3200ms) dan transisi fade
       await tester.pump(const Duration(milliseconds: 3800));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 700));
 
       // 5. Pastikan aplikasi langsung masuk ke ChatInboxScreen tanpa meminta login
       expect(find.byType(ChatInboxScreen), findsOneWidget);
@@ -46,7 +46,7 @@ void main() {
 
       // 3. Selesaikan durasi loading screen
       await tester.pump(const Duration(milliseconds: 3800));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 700));
 
       // 4. Pastikan aplikasi masuk ke LoginScreen karena belum/sudah logout
       expect(find.byType(LoginScreen), findsOneWidget);
